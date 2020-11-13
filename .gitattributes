@@ -1,2 +1,2 @@
-*.proc linguist-language=REXX
-*.jcl linguist-language=JCL
+*.PROC linguist-language=REXX
+*.JCL linguist-language=JCL
