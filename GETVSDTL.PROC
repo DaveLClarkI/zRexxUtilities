@@ -1,0 +1,321 @@
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* REXX: GETVSDTL   Proc Created 06/01/2004   By Dave Clark        */
+/*                  Last Revised 06/01/2004                        */
+/*                                                                 */
+/*      This procedure queries the current,  running VSE system to */
+/* map out and report the SVA GetVIS usage.   Such a report can be */
+/* used to easily identify  GetVIS  leaks and GetVIS fragmentation */
+/* issues.                                                         */
+/*                                                                 */
+/* // EXEC REXX=GETVSDTL,PARM='...'                                */
+/*                                                                 */
+/* Arguments are: <USER=>userid                                    */
+/*                                                                 */
+/* Where: USER=    is an optional keyword tag;                     */
+/*        userid   is the authorizing user id.                     */
+/*                                                                 */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* No warranty is expressed or implied.    Written by Dave L Clark */
+/* Neither the author nor the company is   WinWholesale Group Svcs */
+/* responsible for any loss or damage      3110 Kettering Blvd.    */
+/* resulting from the use of this code.    Dayton, OH  45439       */
+/* Source is provided on an as-is basis.   Phone (937)294-5331     */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+  False = (0=1);
+  True  = (1=1);
+
+  rc  = 0
+  Arg msg
+
+/* ----------------------------------------------------------------- */
+/* Validate PARM arguments                                           */
+/* ----------------------------------------------------------------- */
+
+  If msg ¬= '' & msg ¬= '?' Then Do
+    Parse Value Space(Translate(msg,' ',',')) With ,
+      uid ext 1 'USER=' uid2 .;
+    If uid2 ¬= '' Then uid = uid2;     /* if keyword used,... */
+    If ext  ¬= '' Then Do              /* extra values found? */
+      Say ' EXTRA='ext;
+      Say ' Extraneous argument(s) specified.';
+      msg = '';
+      rc = 4;
+    End
+    If uid == '' Then Do
+      Say ' USER='uid;
+      Say ' Required argument(s) missing.';
+      msg = '';
+      rc = 4;
+    End
+  End
+
+  If msg == '' | msg == '?' Then Do
+    Do n = 1 While Left(Sourceline(n),2) = '/*'
+      Say ' 'Sourceline(n);
+    End
+    Exit rc;
+  End
+
+/* ----------------------------------------------------------------- */
+/* Begin processing                                                  */
+/* ----------------------------------------------------------------- */
+
+  'SETUID' uid;
+  If rc ¬= 0 Then Do
+    Say ' Error: Invalid user id; rc =' rc
+    Exit 4;
+  End
+
+  cnsl  = 'GETVSDTL';
+  mask  = 'FFFFFFFFFFFF0000'X;     /* compare CARTs on first 6 bytes */
+  rsp.  = '';
+
+/* ----------------------------------------------------------------- */
+/* Process SIR command output for VSE information                    */
+/* ----------------------------------------------------------------- */
+
+  Call RexxConsole 'GV_SIR', 'SIR';
+
+  mode  = 'Native';
+  cpuid = '';
+  vmusr = '';
+
+  Do i = 1 To rsp.0
+    If Pos("CPUID",rsp.i) > 0 Then Do
+      Parse Var rsp.i "CPUID" "=" cpuid .;
+      cpuid = Left(cpuid,8);
+    End
+    If Pos("CPUID",rsp.i) > 0,
+    &  Pos("VM",rsp.i) > 0 Then Do
+      mode = 'VM';
+      Iterate;
+    End
+    If mode == 'VM',
+    &  WordPos("USERID",rsp.i) > 0 Then Do
+      Parse Var rsp.i "USERID" "=" vmusr .;
+      Iterate;
+    End
+    If WordPos("PROC-MODE",rsp.i) > 0,
+    &  Pos("LPAR",rsp.i) > 0 Then Do
+      mode = 'LPAR';
+      Leave;
+    End
+  End
+
+/* ----------------------------------------------------------------- */
+/* Process MAP command output                                        */
+/* ----------------------------------------------------------------- */
+
+  Call RexxConsole 'GV_MAP', 'MAP VIRTUAL';
+
+  Do i = 1 To rsp.0
+    Parse Var rsp.i . 15 typ . 25 vsz gvs bad .;
+    Select
+      When typ = 'SVA-24' Then
+        e24 = X2D(bad) + (Left(vsz,Length(vsz)-1)*1024),
+                       + (Left(gvs,Length(gvs)-1)*1024) - 1;
+      When typ = 'SVA-31' Then
+        b31 = X2D(bad) + (Left(vsz,Length(vsz)-1)*1024);
+      Otherwise
+    End
+  End
+
+/* ----------------------------------------------------------------- */
+/* Process GETVIS SVA,DETAIL command output                          */
+/* ----------------------------------------------------------------- */
+
+  Call RexxConsole 'GV_SVA', 'GETVIS SVA,DETAIL';
+
+  gvd.  = '';
+  gvd.0 = 0;
+
+  Do i = 1 to rsp.0 While Pos(' SUBPOOL ',rsp.i) = 0
+  End
+  i = i + 1;
+  Do i = i To rsp.0
+    Parse Var rsp.i . . a b . 32 a24 . 53 a31 .;
+    If a = 'SUBPOOL' & b = 'TOTALS' Then Leave;
+    If a ¬= '' Then Do
+      sbp = a;
+      rqt = b;
+      Iterate;
+    End
+    Parse Var a24 f24 '-' t24 .;
+    If f24 ¬= '' Then Do
+      n = gvd.0 + 1;
+      gvd.n = Right(X2D(f24),10,'0') X2D(t24) sbp rqt;
+      gvd.0 = n;
+    End
+    Parse Var a31 f31 '-' t31 .;
+    If f31 ¬= '' Then Do
+      n = gvd.0 + 1;
+      gvd.n = Right(X2D(f31),10,'0') X2D(t31) sbp rqt;
+      gvd.0 = n;
+    End
+  End
+
+  x = SORTSTEM('GVD.');
+
+/* ----------------------------------------------------------------- */
+/* Build report output                                               */
+/* ----------------------------------------------------------------- */
+
+  ctl    = '';
+  cad    = 0;
+  hdr.   = '';
+  hdr.0  = 0;
+  lcnt   = 60;               /* line counter */
+  pnum   = 0;                /* page counter */
+  rpt.   = '';
+  rpt.0  = 0;
+
+                 /* ----- build report headers ----- */
+
+  n      = hdr.0 + 1;
+  hdr.n  = '1'||Center('VSE SVA GetVIS Detail',75);
+  hdr.n  = Overlay('GETVSDTL ', hdr.n, 2);
+  hdr.n  = Overlay(' Page:  ###', hdr.n, Length(hdr.n)-10);
+  n      = n + 1;
+  hdr.n  = ' 'Left(IFF(mode=='VM',,
+                       'VM: 'vmusr,,
+                       'Mode: 'mode),
+                   '('cpuid')',,
+                75);
+  hdr.n  = Overlay(' 'Left(Date('U'), 6)||Left(Date('S'), 4), hdr.n,,
+                  Length(hdr.n)-10);
+  n      = n + 1;
+  hdr.n  = ' 'Copies(' ',9),
+              '  Sub Pool     Req.Type    From-Thru Addr.      Size  ';
+  n      = n + 1;
+  hdr.n  = ' 'Copies(' ',9),
+              '------------   --------   -----------------   --------';
+  hdr.0  = n;
+
+                 /* ----- build report detail ----- */
+
+  Do i = 1 To gvd.0
+    Parse Var gvd.i fad tad sbp rqt .;
+    If cad = 0 Then cad = fad;
+    If cad < fad Then Do
+      ctl = '';
+      If (fad-cad) < (1024*1024) Then
+        x=AddLine(Copies(' ',9),
+                  Center('*** free ***',25),
+                  D2X(cad,8)'-'D2X(fad-1,8),
+                  Right(((fad-cad)/1024)'K',10));
+      Else Do
+        If cad < e24 Then Do
+          x=AddLine(Copies(' ',9),
+                    Center('*** free ***',25),
+                    D2X(cad,8)'-'D2X(e24,8),
+                    Right(((e24-cad+1)/1024)'K',10));
+        End
+        x=AddLine(Copies(' ',9),
+                  Center('<== non-sva area ==>',25));
+        If fad > b31 Then Do
+          x=AddLine(Copies(' ',9),
+                    Center('*** free ***',25),
+                    D2X(b31,8)'-'D2X(fad-1,8),
+                    Right(((fad-b31)/1024)'K',10));
+        End
+      End
+    End
+    If sbp == ctl Then sbp = '  "';
+                  Else ctl = sbp;
+    x=AddLine(Copies(' ',9),
+              Left(sbp,14),
+              Left(rqt,10),
+              D2X(fad,8)'-'D2X(tad,8),
+              Right(((tad-fad+1)/1024)'K',10));
+    cad = tad + 1;
+  End
+
+/* ----------------------------------------------------------------- */
+/* Send the report to POWER                                          */
+/* ----------------------------------------------------------------- */
+
+  str = 'JOBNAME GETVSDTL',
+         'FORMAT ASA',
+          'CLASS Z',         /* --- also available --- */
+         'COPIES 1',         /*   'DESTNODE R009',     */
+           'DISP L',         /*   'DESTUSER '||uid,    */
+           'JSEP 0',         /* ---------------------- */
+       'PRIORITY 3',
+       'USERINFO '||uid,
+           'STEM rpt.'
+  Address POWER 'PUTQE LST' str
+
+/* ----------------------------------------------------------------- */
+/* Processing complete                                               */
+/* ----------------------------------------------------------------- */
+
+Exit 0;
+
+/* ----------------------------------------------------------------- */
+/* Internal Functions                                                */
+/* ----------------------------------------------------------------- */
+
+AddLine: Procedure Expose rpt. hdr. pnum lcnt;
+                   /* ----- do report headers ----- */
+  If lcnt = 60 Then Do
+    pnum = pnum + 1;         /* increment page number */
+    Do i = 1 To hdr.0
+      n     = rpt.0 + 1;
+      rpt.n = hdr.i;
+      rpt.0 = n;
+      If Pos('###', rpt.n) > 0 Then Do
+        rpt.n = Overlay(Format(pnum, 3), rpt.n, Pos('###', rpt.n));
+      End
+    End i
+    lcnt = hdr.0;            /* reset line counter */
+  End
+                   /* ----- do report details ----- */
+  n     = rpt.0 + 1;
+  rpt.n = '';
+  Do i = 1 to Arg()
+    rpt.n = rpt.n||' '||Arg(i);
+  End
+  rpt.0 = n;
+  lcnt = lcnt + 1;
+Return n;
+
+RexxConsole: Procedure Expose cnsl mask rsp.
+  Arg cart,cmd;
+  Address CONSOLE "ACTIVATE NAME" cnsl "PROFILE REXX";
+  If rc ¬= 0 Then Do
+    Say ' Error: Activating "'cnsl'" console; rc =' rc;
+    Exit 4;
+  End
+  Address CONSOLE "CART" cart;
+  If rc ¬= 0 Then Do
+    Say ' Error: Setting "'cart'" CART; rc =' rc;
+    Exit 4;
+  End
+  Address CONSOLE cmd;
+  If rc ¬= 0 Then Do
+    Say ' Error: Issuing "'cmd'" command; rc =' rc;
+    Exit 4;
+  End
+  rc = GETMSG('rsp.','RESP',cart,mask,3);
+  If rc ¬= 0 & rc ¬= 5 Then Do
+    Say ' Error: Retrieving "'cmd'" response; rc =' rc;
+    Exit 4;
+  End
+  Address CONSOLE "DEACTIVATE" cnsl;
+  If rc ¬= 0 Then Do
+    Say ' Error: Deactivating "'cnsl'" console; rc =' rc;
+    Exit 4;
+  End
+Return;
+
+/* ----------------------------------------------------------------- */
+/* IF Function whose first argument should be a Boolean value that   */
+/*             determines which of the other two arguments to return */
+/* ----------------------------------------------------------------- */
+IFF: Procedure Expose True False;
+  Parse Arg ifCond, isTrue, isFalse;
+  If ifCond = True Then Return isTrue;
+Return isFalse;
