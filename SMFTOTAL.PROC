@@ -1,0 +1,701 @@
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* REXX: SMFTOTAL   Proc Created 02/19/2004   By Dave Clark        */
+/*                  Last Revised 04/14/2004                        */
+/*                                                                 */
+/*      This procedure accumulates, totals, and averages the data  */
+/* output from the "SIR SMF" command.  Optionally, that same data  */
+/* may be extracted from PRINTLOG entries in the LST queue.        */
+/*                                                                 */
+/* // EXEC REXX=SMFTOTAL,PARM='...'                                */
+/*                                                                 */
+/* Arguments are: <USER=>userid                                    */
+/*                <DETAIL=>{NO¦YES}                                */
+/*                <INTERVAL=>minutes                               */
+/*                <DURATION=>hours                                 */
+/*                <RANGE=cuu-cuu>                                  */
+/*                <FAX=phone>                                      */
+/* Notes:                                                          */
+/* 1) Must be delimited by either commas, spaces, or both.         */
+/* 2) The order is positional -- unless keyword tags specified.    */
+/* 3) You cannot omit a positional argument and position the next. */
+/*                                                                 */
+/* Where: USER=     is an optional keyword tag;                    */
+/*        userid    is the authorizing user id.                    */
+/*        DETAIL=   is an optional keyword tag;                    */
+/*        NO        requests averages only and is the default;     */
+/*        YES       requests detail in addition to the averages.   */
+/*        INTERVAL= is an optional keyword tag;                    */
+/*        minutes   is the number of minutes between collection    */
+/*                    intervals.  The default is 15 minutes.       */
+/*        DURATION= is an optional keyword tag;                    */
+/*        hours     is the number of hours over which the process  */
+/*                    of collection continues.  Default is 1 hour. */
+/*        RANGE=    is required in order to limit the devices;     */
+/*        cuu-cuu   is the range of devices to select.             */
+/*        FAX=      is required in order to use fax support;       */
+/*        phone     is an 11-digit fax phone number.               */
+/*                                                                 */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* No warranty is expressed or implied.    Written by Dave L Clark */
+/* Neither the author nor the company is   DAPSCO Information Sys. */
+/* responsible for any loss or damage      3110 Kettering Blvd.    */
+/* resulting from the use of this code.    Dayton, OH  45439       */
+/* Source is provided on an as-is basis.   Phone (937)294-5331     */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* Sample JCL (taking all defaults):                               */
+/*                                                                 */
+/*   * $$ JOB JNM=SMFTOTAL,DISP=D,CLASS=R                          */
+/*   * $$ LST LST=SYSLST,DISP=D,CLASS=Z                            */
+/*   // JOB    SMFTOTAL   TOTAL SMF I/O PERFORMANCE DATA           */
+/*   // LIBDEF *,SEARCH=DAP.PROD,TEMP                              */
+/*   // EXEC   REXX=SMFTOTAL,PARM='DLC'    <== YOUR INITIALS HERE  */
+/*   /* EOD */                                                     */
+/*   /& EOJ                                                        */
+/*   * $$ EOJ                                                      */
+/*                                                                 */
+/* In my case, this sample limits the report to my DASD devices:   */
+/*                                                                 */
+/*   // EXEC   REXX=SMFTOTAL,PARM='DLC,RANGE=400-4FF'              */
+/*                                                                 */
+/* This sample uses an interval of 10 minutes and runs 24 hours:   */
+/*                                                                 */
+/*   // EXEC   REXX=SMFTOTAL,PARM='DLC,INTERVAL=10,DURATION=24'    */
+/*                                                                 */
+/* This sample extracts the data from LST queue entries:           */
+/*                                                                 */
+/*   // EXEC   REXX=SMFTOTAL,PARM='DLC,...original options...'     */
+/*   * PRINTLOG 02712 E                                            */
+/*   * PRINTLOG 10712 E                                            */
+/*   * PRINTLOG 18242 E                                            */
+/*   /* EOD */                                                     */
+/*                                                                 */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+  False = (0=1);
+  True  = (1=1);
+
+  rc = 0
+  Arg msg
+
+/* ----------------------------------------------------------------- */
+/* Get SYSIPT data                                                   */
+/* ----------------------------------------------------------------- */
+
+  "EXECIO * DISKR SYSIPT ( OPEN FINIS STEM card."
+  If rc <> 0 Then Do
+    Say ' Error: EXECIO returned rc =' rc
+    Exit 16
+  End
+
+/* ----------------------------------------------------------------- */
+/* Validate PARM arguments                                           */
+/* ----------------------------------------------------------------- */
+
+  If msg <> '' & msg <> '?' Then Do
+    Parse Value Space(Translate(msg,' ',',')) With ,
+      uid dtl itv dur ext 1 'USER=' uid2 . ,
+                          1 'DETAIL=' dtl2 .,
+                          1 'INTERVAL=' itv2 .,
+                          1 'DURATION=' dur2 .,
+                          1 'RANGE=' rng .,
+                          1 'FAX=' fax .;
+    If uid2 <> '' Then uid = uid2;     /* if keyword used,... */
+    If dtl2 <> '' Then dtl = dtl2;     /* if keyword used,... */
+    If itv2 <> '' Then itv = itv2;     /* if keyword used,... */
+    If dur2 <> '' Then dur = dur2;     /* if keyword used,... */
+    If Kword(uid) Then uid = '';       /* positional omitted? */
+    If Kword(dtl) Then dtl = '';       /* positional omitted? */
+    If dtl   = '' Then dtl = 'NO';     /* use default setting */
+    If Kword(itv) Then itv = '';       /* positional omitted? */
+    If itv   = '' Then itv = 15;       /* use default setting */
+    If Kword(dur) Then dur = '';       /* positional omitted? */
+    If dur   = '' Then dur = 1;        /* use default setting */
+    If ext  <> '',                     /* extra values found? */
+    &  Left(ext,6) <> 'RANGE=',
+    &  Left(ext,4) <> 'FAX=',
+    Then Do
+      Say ' EXTRA='ext;
+      Say ' Extraneous argument(s) specified.';
+      msg = '';
+      rc = 4;
+    End
+    If uid  == '' Then Do              /* userid is required! */
+      Say ' USER='uid',DETAIL='dtl',INTERVAL='itv',DURATION='dur||,
+                     '<,RANGE='rng'><,FAX='fax'>';
+      Say ' Required argument(s) missing.';
+      msg = '';
+      rc = 4;
+    End
+  End
+
+  If msg == '' | msg == '?' Then Do
+    Do n = 1 While Left(Sourceline(n),2) = '/*'
+      Say ' 'Sourceline(n);            /* display help information   */
+    End
+    Exit rc;
+  End
+
+/* ----------------------------------------------------------------- */
+/* Begin processing                                                  */
+/* ----------------------------------------------------------------- */
+
+  Say ' Processing USER='uid',DETAIL='dtl',INTERVAL='itv||,
+             ',DURATION='dur'<,RANGE='rng'><,FAX='fax'>';
+
+  cnsl  = 'SMFTOTAL';
+  mask  = 'FFFFFFFFFFFF0000'X;    /* compare CARTs on first 6 bytes  */
+  rsp.  = '';
+
+  'SETUID' uid;                   /* prepare for POWER report later  */
+  If rc <> 0 Then Do
+    Say ' 'cnsl': Error -- Invalid user id; rc =' rc
+    Exit 4;
+  End
+
+  dur = Trunc(dur * 60 / itv);    /* chg. hours to no. of intervals  */
+
+  from  = 0; thru = 4096;         /* all devices */
+  If rng <> '',                   /* a valid device range  */
+  & (Length(rng) <> 7,            /* has a length of 7,    */
+  | ¬Datatype(Left(rng,3),'X'),   /* is a valid hex value, */
+  |  SubStr(rng,4,1) <> '-',      /* has a dash in it, and */
+  | ¬Datatype(Right(rng,3),'X')), /* is a valid hex value  */
+  Then Do
+    Say ' 'cnsl': Range is invalid.  Ignored.'
+    rng = '';
+  End
+  If rng <> '' Then Do
+    from = X2D(Left(rng,3));      /* make range comparisons against  */
+    thru = X2D(Right(rng,3));     /* decimal values for accuracy     */
+  End
+
+  Numeric Digits 11;              /* set digits from 9 to 11 */
+  If fax <> '',                   /* a valid fax number      */
+  & (Length(fax) <> 11,           /* has a length of 11, and */
+  | ¬Datatype(fax,'W')),          /* is a valid whole number */
+  Then Do
+    Say ' 'cnsl': Fax number is invalid.  Ignored.'
+    fax = '';
+  End
+  Numeric Digits;                 /* set digits back to 9    */
+
+/* ----------------------------------------------------------------- */
+/* Build report headings                                             */
+/* ----------------------------------------------------------------- */
+
+  rpt.  = '';
+  rpt.0 = 0;
+  rptw  = 70;                /* report width -- not counting cc */
+
+  rpth  = Center('### I/O Performance Report', rptw);
+  rpth  = Overlay(cnsl, rpth, 1, 9, ' ');
+  rpth  = Overlay(' Page: ####', rpth, Length(rpth)-10);
+  rpth  = rpth||,
+          Center('######-Level', rptw);
+  rpth  = Substr(rpth,1,Length(rpth)-10)||,
+          Left(Date('U'), 6)||Left(Date('S'), 4)||,
+          Right(' ', rptw, ' ');
+
+  If dtl == 'YES' Then
+    rpth = rpth||,
+'  Time             Total     Average    Average    Average    Average '||,
+'Observd  Device  I/O Count    Queued    Connect    Disconn     Total  '||,
+'-------  ------  ---------  ---------  ---------  ---------  ---------';
+  Else Do
+    rpth = rpth||,
+'                   Total     Average    Average    Average    Average '||,
+'         Device  I/O Count    Queued    Connect    Disconn     Total  '||,
+'         ------  ---------  ---------  ---------  ---------  ---------';
+  End
+
+/* ----------------------------------------------------------------- */
+/* Initialize variables                                              */
+/* ----------------------------------------------------------------- */
+
+  smf.     = '';                  /* data array "keyed" by CUU */
+  smflst.  = '';                  /* list of CUU's collected   */
+  smflst.0 = 0;
+  vse.     = '';                  /* data array "keyed" by CUU */
+  vselst.  = '';                  /* list of CUU's collected   */
+  vselst.0 = 0;
+
+  If card.0 > 0 Then Do
+
+/* ----------------------------------------------------------------- */
+/* Process SYSIPT data                                               */
+/* ----------------------------------------------------------------- */
+
+  Do c = 1 to card.0
+    Parse Var card.c . jnm jno jcl .
+    If jnm == "",
+    | ¬DataType(jno,'W'),
+    | ¬DataType(jcl,'U'),
+    Then Do
+      Say ' Job Name "'jnm'" and/or Job Number "'jno'" invalid.'
+      Iterate;
+    End
+    fc = OUTTRAP('err.','*','NOCONCAT');
+    Address POWER "GETQE LST JOBNAME" jnm "JOBNUM" jno "CLASS" jcl,
+                  "STEM lstqe."
+    If rc <> 0 Then Do
+      Say ' Job Name "'jnm'" and Job Number "'jno'" combo not found.'
+      Do i = 1 to err.0
+        Say ' 'err.i;
+      End
+      Iterate;
+    End
+    oldout = ASSGN('STDOUT','SYSLOG');
+    Say cnsl': Collecting...';
+    oldout = ASSGN('STDOUT',oldout);
+    Do i = 1 To lstqe.0
+      If Pos(cnsl': COLLECTING...',lstqe.i) = 0 Then Iterate;
+      tm     = Left(Word(lstqe.i,6),5);
+      tmstmp = Right(Left(tm,2)*60+Right(tm,2),4,'0');
+      i = i + 1;
+      Do i = i To lstqe.0
+        If Word(lstqe.i,2)         <> 'AR'    Then Iterate;
+        If Right(Strip(lstqe.i),8) <> cnsl    Then Iterate;
+        If Word(lstqe.i,4)         == '1I40I' Then Leave;
+        If Length(Word(lstqe.i,4)) = 3 Then Do
+          Parse Var lstqe.i . . . cuu ioc que con dis tot .
+          If ioc == 'INCONSISTENT' Then Iterate;
+          If smf.cuu = '' Then Do        /* new CUU device?  */
+            smf.cuu  = cuu;              /* initialize root  */
+            smf.cuu. = '';               /* initialize stem  */
+            smf.cuu.0 = 0;               /* initialize count */
+            n = smflst.0 + 1;            /* add to CUU list  */
+            smflst.n = Right(X2D(cuu),4,'0');  /* as decimal */
+            smflst.0 = n;                     /* for sorting */
+          End
+          n = smf.cuu.0 + 1;
+          smf.cuu.n = tmstmp ioc que con dis tot;
+          smf.cuu.0 = n;
+        End
+      End
+      i = i + 1;
+      Do i = i To lstqe.0
+        If Word(lstqe.i,2)         <> 'AR'    Then Iterate;
+        If Right(Strip(lstqe.i),8) <> cnsl    Then Iterate;
+        If Word(lstqe.i,4)         == '1I40I' Then Leave;
+        If Length(Word(lstqe.i,4)) = 3 Then Do
+          Parse Var lstqe.i . . . cuu ioc que con dis tot .
+          If ioc == 'INCONSISTENT' Then Iterate;
+          If vse.cuu = '' Then Do        /* new CUU device?  */
+            vse.cuu  = cuu;              /* initialize root  */
+            vse.cuu. = '';               /* initialize stem  */
+            vse.cuu.0 = 0;               /* initialize count */
+            n = vselst.0 + 1;            /* add to CUU list  */
+            vselst.n = Right(X2D(cuu),4,'0');  /* as decimal */
+            vselst.0 = n;                     /* for sorting */
+          End
+          n = vse.cuu.0 + 1;
+          vse.cuu.n = tmstmp ioc que con dis tot;
+          vse.cuu.0 = n;
+        End
+      End
+    End
+  End
+
+  End
+  Else Do
+
+/* ----------------------------------------------------------------- */
+/* Turn on SMF data collection                                       */
+/* ----------------------------------------------------------------- */
+
+  Call RexxConsole 'ST_MON', 'SIR SMF=ON';
+
+/* ----------------------------------------------------------------- */
+/* Begin monitoring                                                  */
+/* ----------------------------------------------------------------- */
+
+  oldout = ASSGN('STDOUT','SYSLOG');
+  Say cnsl': Monitoring...';
+  oldout = ASSGN('STDOUT',oldout);
+
+  x = OPERMSG('ON');              /* accept VSE MSG command to quit  */
+
+  itvcnt = 0;                     /* interval counter */
+  itvtmr = 0;                     /* interval timer   */
+
+  Do Forever
+
+    msg = OPERMSG('MSGDATA');     /* check for early termination */
+    If Length(msg) > 0 Then Leave;
+
+    x = SLEEP(60);                /* delay seconds */
+
+    msg = OPERMSG('MSGDATA');     /* check for early termination */
+    If Length(msg) > 0 Then Leave;
+
+    itvtmr = itvtmr + 1;          /* wait in one-minute intervals    */
+    If itvtmr < itv Then Iterate; /* until desired interval reached  */
+    itvtmr = 0;
+
+/* ----------------------------------------------------------------- */
+/* Process SMF data collection                                       */
+/* ----------------------------------------------------------------- */
+
+    oldout = ASSGN('STDOUT','SYSLOG');
+    Say cnsl': Collecting...';
+    oldout = ASSGN('STDOUT',oldout);
+
+    tmstmp = Date('Standard')||Right(Time('Minutes'),4,'0');
+
+    Call RexxConsole 'ST_SMF', 'SIR SMF';
+
+    Do i = 1 To rsp.0
+      If Length(Word(rsp.i,3)) = 3 Then Do
+        Parse Var rsp.i . . cuu ioc que con dis tot .
+        If ioc == 'INCONSISTENT' Then Iterate;
+        If smf.cuu = '' Then Do        /* new CUU device?  */
+          smf.cuu  = cuu;              /* initialize root  */
+          smf.cuu. = '';               /* initialize stem  */
+          smf.cuu.0 = 0;               /* initialize count */
+          n = smflst.0 + 1;            /* add to CUU list  */
+          smflst.n = Right(X2D(cuu),4,'0');  /* as decimal */
+          smflst.0 = n;                     /* for sorting */
+        End
+        n = smf.cuu.0 + 1;
+        smf.cuu.n = tmstmp ioc que con dis tot;
+        smf.cuu.0 = n;
+      End
+    End
+
+    Call RexxConsole 'ST_VSE', 'SIR SMF,VSE';
+
+    Do i = 1 To rsp.0
+      If Length(Word(rsp.i,3)) = 3 Then Do
+        Parse Var rsp.i . . cuu ioc que con dis tot .
+        If ioc == 'INCONSISTENT' Then Iterate;
+        If vse.cuu = '' Then Do        /* new CUU device?  */
+          vse.cuu  = cuu;              /* initialize root  */
+          vse.cuu. = '';               /* initialize stem  */
+          vse.cuu.0 = 0;               /* initialize count */
+          n = vselst.0 + 1;            /* add to CUU list  */
+          vselst.n = Right(X2D(cuu),4,'0');  /* as decimal */
+          vselst.0 = n;                     /* for sorting */
+        End
+        n = vse.cuu.0 + 1;
+        vse.cuu.n = tmstmp ioc que con dis tot;
+        vse.cuu.0 = n;
+      End
+    End
+
+/* ----------------------------------------------------------------- */
+/* Duration reached for end of monitoring?                           */
+/* ----------------------------------------------------------------- */
+
+    itvcnt = itvcnt + 1;          /* repeat by interval counter      */
+    If itvcnt = dur Then Leave;   /* until desired duration reached  */
+
+    Call RexxConsole 'ST_OFF', 'SIR SMF=OFF';
+    Call RexxConsole 'ST_MON', 'SIR SMF=ON';
+
+  End
+
+/* ----------------------------------------------------------------- */
+/* End of monitoring                                                 */
+/* ----------------------------------------------------------------- */
+
+  Call RexxConsole 'ST_OFF', 'SIR SMF=OFF';
+
+  End
+
+/* ----------------------------------------------------------------- */
+/* Begin report generation                                           */
+/* ----------------------------------------------------------------- */
+
+  oldout = ASSGN('STDOUT','SYSLOG');
+  Say cnsl': Generating report...';
+  oldout = ASSGN('STDOUT',oldout);
+
+/* ----------------------------------------------------------------- */
+/* Sort the device "cuu" values                                      */
+/* ----------------------------------------------------------------- */
+
+  If smflst.0 > 0 Then Do
+    rc = SORTSTEM('SMFLST.');     /* sort by decimal CUU value   */
+    If rc <> 0 Then Do
+      Say ' 'cnsl': Error -- Sorting SMF list; rc =' rc
+    End
+  End
+
+  If vselst.0 > 0 Then Do
+    rc = SORTSTEM('VSELST.');     /* sort by decimal CUU value   */
+    If rc <> 0 Then Do
+      Say ' 'cnsl': Error -- Sorting VSE list; rc =' rc
+    End
+  End
+
+/* ----------------------------------------------------------------- */
+/* Calculate while building the report                               */
+/* ----------------------------------------------------------------- */
+
+  pgno   = 0;
+  lcnt   = 99;
+  key    = 'SMF';
+
+  obscnt = 0;
+  avgioc = 0;
+  avgque = 0;
+  avgcon = 0;
+  avgdis = 0;
+  avgtot = 0;
+  totioc = 0;
+  totque = 0;
+  totcon = 0;
+  totdis = 0;
+  tottot = 0;
+
+  Do i = 1 to smflst.0
+    cuu = D2X(smflst.i,3);   /* change back to 3-digit CUU value */
+    If smflst.i < from,
+    |  smflst.i > thru,
+    |  smf.cuu.0 = 0,
+    Then Do
+      Iterate;
+    End
+    If dtl == 'YES' & obscnt > 0 Then x=AddLine(' ');
+    observ = smf.cuu.0;
+    Do j = 1 to observ
+      Parse Var smf.cuu.j tmstmp ioc que con dis tot .
+      Call DtlActuals;
+    End
+    Call SubAverage;
+  End
+  Call TotAverage;
+
+  pgno   = 0;
+  lcnt   = 99;
+  key    = 'VSE';
+
+  obscnt = 0;
+  totque = 0;
+  totcon = 0;
+  totdis = 0;
+  tottot = 0;
+
+  Do i = 1 to vselst.0
+    cuu = D2X(vselst.i,3);   /* change back to 3-digit CUU value */
+    If vselst.i < from,
+    |  vselst.i > thru,
+    |  vse.cuu.0 = 0,
+    Then Do
+      Iterate;
+    End
+    If dtl == 'YES' & obscnt > 0 Then x=AddLine(' ');
+    observ = vse.cuu.0;
+    Do j = 1 to observ
+      Parse Var vse.cuu.j tmstmp ioc que con dis tot .
+      Call DtlActuals;
+    End
+    Call SubAverage;
+  End
+  Call TotAverage;
+
+  If fax <> '',
+  &  pgno > 0,
+  Then Do
+    n     = rpt.0 + 1;
+    rpt.n = '+**END';
+    rpt.0 = n;
+  End
+
+/* ----------------------------------------------------------------- */
+/* Send the report to POWER                                          */
+/* ----------------------------------------------------------------- */
+
+  If rpt.0 = 0 Then
+    Say ' 'cnsl': No monitoring data to report.';
+  Else Do
+    str = 'JOBNAME SMFTOTAL',
+           'FORMAT ASA';
+    If fax = '' Then
+      str = str,
+            'CLASS Z';
+    Else Do
+      str = str,
+            'CLASS D',
+         'DESTUSER FAXSTAR';
+    End
+    str = str,
+           'COPIES 1',         /* --- also available --- */
+             'DISP K',         /*   'DESTNODE R009',     */
+             'JSEP 0',         /*   'DESTUSER '||uid,    */
+         'PRIORITY 5',         /* ---------------------- */
+         'USERINFO '||uid,
+             'STEM rpt.';
+    Address POWER 'PUTQE LST' str
+  End
+
+/* ----------------------------------------------------------------- */
+/* Processing complete                                               */
+/* ----------------------------------------------------------------- */
+
+Exit 0;
+
+/* ----------------------------------------------------------------- */
+/* Called routines                                                   */
+/* ----------------------------------------------------------------- */
+
+DtlActuals:
+  If dtl == 'YES' Then Do
+    tm = Right(tmstmp,4);
+    tm = Right(tm%60,2,'0')':'Right(tm//60,2,'0');
+    x=AddLine(' 'tm'   'Center(cuu,6),
+              Format(ioc,10,0),
+              Format(que,6,3),
+              Format(con,6,3),
+              Format(dis,6,3),
+              Format(tot,6,3));
+  End
+  avgioc = avgioc + ioc;
+  avgque = avgque + que;
+  avgcon = avgcon + con;
+  avgdis = avgdis + dis;
+  avgtot = avgtot + tot;
+Return;
+
+SubAverage:
+  If dtl == 'YES' Then Do
+    x=AddLine('               ',
+              '----------',
+              ' ---------',
+              ' ---------',
+              ' ---------',
+              ' ---------');
+  End
+  avgioc = avgioc / observ;
+  avgque = avgque / observ;
+  avgcon = avgcon / observ;
+  avgdis = avgdis / observ;
+  avgtot = avgtot / observ;
+  x = AddLine('Average: 'Center(cuu,6),
+              Format(avgioc,10,0),
+              Format(avgque,6,3),
+              Format(avgcon,6,3),
+              Format(avgdis,6,3),
+              Format(avgtot,6,3));
+  obscnt = obscnt + 1
+  totioc = totioc + avgioc;
+  totque = totque + avgque;
+  totcon = totcon + avgcon;
+  totdis = totdis + avgdis;
+  tottot = tottot + avgtot;
+  avgioc = 0;
+  avgque = 0;
+  avgcon = 0;
+  avgdis = 0;
+  avgtot = 0;
+Return;
+
+TotAverage:
+  If obscnt > 0 Then Do
+    If dtl == 'YES' Then x=AddLine(' ');
+    x=AddLine('               ',
+              '==========',
+              ' =========',
+              ' =========',
+              ' =========',
+              ' =========');
+    x=AddLine('Average of All:',
+              Format(totioc/obscnt,10,0),
+              Format(totque/obscnt,6,3),
+              Format(totcon/obscnt,6,3),
+              Format(totdis/obscnt,6,3),
+              Format(tottot/obscnt,6,3));
+  End
+Return;
+
+/* ----------------------------------------------------------------- */
+/* Internal subroutines                                              */
+/* ----------------------------------------------------------------- */
+
+RexxConsole: Procedure Expose cnsl mask rsp.
+  Arg cart,cmd;
+  Address CONSOLE "ACTIVATE NAME" cnsl "PROFILE REXX"
+  If rc <> 0 Then Do
+    Say ' Error: Activating "'cnsl'" console; rc =' rc
+    Exit 4;
+  End
+  Address CONSOLE "CART" cart
+  If rc <> 0 Then Do
+    Say ' Error: Setting "'cart'" CART; rc =' rc
+    Exit 4;
+  End
+  Address CONSOLE cmd
+  If rc <> 0 Then Do
+    Say ' Error: Issuing "'cmd'" command; rc =' rc
+    Exit 4;
+  End
+  rc = GETMSG('rsp.','RESP',cart,mask,3)
+  If rc <> 0 & rc <> 5 Then Do
+    Say ' Error: Retrieving "'cmd'" response; rc =' rc
+    Exit 4;
+  End
+  Address CONSOLE "DEACTIVATE" cnsl
+  If rc <> 0 Then Do
+    Say ' Error: Deactivating "'cnsl'" console; rc =' rc
+    Exit 4;
+  End
+Return;
+
+HdrLines: Procedure Expose rpt. rptw rpth pgno lcnt key fax cnsl uid
+  pgno = pgno + 1;
+  lcnt = 0;
+  Do i = 0 to (Length(rpth)/rptw-1)
+    lcnt  = lcnt + 1;
+    n     = rpt.0 + 1;
+    rpt.n = IFF(lcnt=1,'1',' ')||SubStr(rpth, i*rptw+1, rptw);
+    If lcnt = 1 Then Do
+      rpt.n = Overlay(key, rpt.n, Pos('###', rpt.n));
+      rpt.n = Overlay(Format(pgno,4), rpt.n, Pos('####', rpt.n));
+    End
+    If lcnt = 2 Then Do
+      rpt.n = Overlay(IFF(key=='SMF','Device','System'),,
+                      rpt.n, Pos('######', rpt.n));
+    End
+    If fax <> '',
+    &  n = 1,
+    Then Do
+      n     = n + 1;
+      rpt.n = '+**(FAX)' fax '**(REF)' cnsl '**CONFIRM' uid;
+    End
+    rpt.0 = n;
+  End
+Return;
+
+/* ----------------------------------------------------------------- */
+/* Internal functions                                                */
+/* ----------------------------------------------------------------- */
+
+AddLine: Procedure Expose rpt. rptw rpth pgno lcnt key fax cnsl uid
+  If lcnt > 59 Then Call HdrLines;
+  lcnt  = lcnt + 1;
+  n     = rpt.0 + 1;
+  rpt.0 = n;
+  rpt.n = '';
+  Do i = 1 to Arg()
+    rpt.n = rpt.n||' '||Arg(i);
+  End
+Return n;
+
+Kword: Procedure Expose True False;
+  Parse Arg v;
+  If Pos('=',v) > 0 Then
+    Return True;
+Return False;
+
+/* ----------------------------------------------------------------- */
+/* IF Function whose first argument should be a Boolean value that   */
+/*             determines which of the other two arguments to return */
+/* ----------------------------------------------------------------- */
+IFF: Procedure Expose True False;
+  Parse Arg ifCond, isTrue, isFalse;
+  If ifCond = True Then Return isTrue;
+Return isFalse;

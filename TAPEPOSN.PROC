@@ -1,0 +1,195 @@
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* REXX: TAPEPOSN   Proc Created 10/03/2005   By Dave Clark        */
+/*                  Last Revised 03/30/2010                        */
+/*                                                                 */
+/*      This procedure searches  the currently-mounted tape volume */
+/* for a specified standard tape label in order to position a tape */
+/* that contains non-standard files between standard labels.  Note */
+/* that, to avoid problems parsing the spaces which are allowed in */
+/* tape labels, the actual tape label to be found must be supplied */
+/* in a VSE Symbolic Parameter -- for example:                     */
+/*                                                                 */
+/* // SETPARM LABEL='tape label'                                   */
+/* // EXEC REXX=TAPEPOSN,PARM='INPUT=200,SYMBOL=LABEL',LABEL       */
+/*                                                                 */
+/* Arguments are: <INPUT=>{cuu|SYSnnn}                             */
+/*                <REW=>{YES|NO}                                   */
+/*                <SYMBOL=>symbol                                  */
+/*                                                                 */
+/* Where: INPUT=   is an optional keyword tag;                     */
+/*        cuu      is the control unit and device address of the   */
+/*                   tape drive where the backup is mounted, or    */
+/*        SYSnnn   is the programmer logical unit assigned to the  */
+/*                   tape drive where the backup is mounted.       */
+/*        REW=     is an optional keyword tag;                     */
+/*        YES      tape rewinds before beginning search (default), */
+/*        NO       prevents tape rewind before beginning search.   */
+/*        SYMBOL=  is an optional keyword tag;                     */
+/*        symbol   is the name of the VSE Symbolic Parameter which */
+/*                   contains the actual tape label to be found.   */
+/*                                                                 */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* No warranty is expressed or implied.    Written by Dave L Clark */
+/* Neither the author nor the company is   WinWholesale Group Svc. */
+/* responsible for any loss or damage      3110 Kettering Blvd.    */
+/* resulting from the use of this code.    Dayton, OH  45439       */
+/* Source is provided on an as-is basis.   Phone (937)294-5331     */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+  Parse Source sys env pgm tokens;
+
+  rc = 0;
+  Arg msg;
+
+/* ----------------------------------------------------------------- */
+/* Validate PARM arguments                                           */
+/* ----------------------------------------------------------------- */
+
+  If msg <> '' & msg <> '?' Then Do
+    Parse Value Space(Translate(msg,' ',',')) With ,
+      inp rew sym ext 1 'INPUT='  inp2 . ,
+                      1 'REW='    rew2 . ,
+                      1 'SYMBOL=' sym2 .;
+    If inp2 <> '' Then inp = inp2;
+    If rew2 <> '' Then rew = rew2;
+    If sym2 <> '' Then sym = sym2;
+    If Kword(inp) Then inp = '';       /* positional omitted? */
+    If Kword(rew) Then rew = '';       /* positional omitted? */
+    If Kword(sym) Then sym = '';       /* positional omitted? */
+    If rew <> 'NO' Then rew = 'YES';   /* use default setting */
+    If ext  <> '' Then Do
+      Say ' EXTRA='ext;
+      Say ' Extraneous argument(s) specified.';
+      msg = '';
+      rc  = 4;
+    End
+    If inp == '',
+    |  sym == '',
+    Then Do
+      Say ' INPUT='inp',REW='rew',SYMBOL='sym;
+      Say ' Required argument(s) missing.';
+      msg = '';
+      rc  = 4;
+    End
+  End
+
+  If msg == '' | msg == '?' Then Do
+    Do n = 1 While Left(Sourceline(n),2) = '/*'
+      Say ' 'Sourceline(n);
+    End
+    Exit rc;
+  End
+
+/* ----------------------------------------------------------------- */
+/* Begin processing                                                  */
+/* ----------------------------------------------------------------- */
+
+  Call SayAll pgm': Positioning...';
+
+  Call RXVSESYM 'Get',sym;
+  If rc <> 0 Then Do
+    Say ' RXVSESYM Get error: rc = 'rc', result = 'result;
+    Exit 8;
+  End
+
+  Interpret 'lbl='sym;
+  lbl = Translate(lbl);
+
+  Call 'DITSETUP';                 /* set up DITTO environment */
+
+  Call DittoCommand '$SET HEADERPG=NO,PRINTLEN=80,PRINTOUT=REXX';
+  If rc <> 0 Then Exit 14;
+
+  If rew == 'YES' Then Do
+    Call DittoCommand '$REW INPUT='inp;
+    If rc <> 0 Then Exit 12;
+  End
+
+/* ----------------------------------------------------------------- */
+/* Search tape labels                                                */
+/* ----------------------------------------------------------------- */
+
+  data.  = '';
+  data.0 = 0;                                         /* get record */
+  Call DittoCommand '$TX INPUT='inp',NLRECS=1,VARNAME=data.';
+
+  If rc = 0 & Left(data.1,4) == 'VOL1' Then Do        /* vol label? */
+    Say 'Volume label:' Substr(data.1,5,6);
+    data.0 = 0;                                       /* get record */
+    Call DittoCommand '$TX INPUT='inp',NLRECS=1,VARNAME=data.';
+  End
+
+  Do While rc = 0 & Left(data.1,21) <> 'HDR1'lbl
+
+    If Left(data.1,4) <> 'HDR1' Then Do               /* no std lbl?*/
+      Say 'Skipping unlabeled file...';
+      Call DittoCommand '$FSF INPUT='inp;             /* then skip1 */
+    End
+    Else Do
+      Say 'Skipping past "'||Substr(data.1,5,17)||'"';
+      Call DittoCommand '$FSF INPUT='inp',NFILES=3';  /* else skip3 */
+    End
+
+    If rc = 0 Then Do                                 /* success?   */
+      data.0 = 0;                                     /* get record */
+      Call DittoCommand '$TX INPUT='inp',NLRECS=1,VARNAME=data.';
+      If data.0 = 0 Then Leave;                       /* end volume?*/
+    End
+
+  End
+
+  If rc = 0,
+  &  Left(data.1,21) = 'HDR1'lbl Then Do              /* was found? */
+    Call SayAll pgm': Positioned at "'||Substr(data.1,5,17)||'"';
+    Call DittoCommand '$BSR INPUT='inp;               /* backspace  */
+  End
+  Else Do
+    Call SayAll pgm': Label notfnd: "'lbl'"';
+    rc = 8;
+  End
+
+/* ----------------------------------------------------------------- */
+/* Processing complete                                               */
+/* ----------------------------------------------------------------- */
+
+  If rc < 0 Then
+    rc = 10;
+  Else Do
+    If rc = 0 Then Do
+      Call SayAll pgm': Continuing...';
+    End
+  End
+
+Exit rc;
+
+/* ----------------------------------------------------------------- */
+/* Internal subroutines and functions                                */
+/* ----------------------------------------------------------------- */
+
+DittoCommand:
+  ditto.  = '';                    /* discard previous output  */
+  ditto.0 = 0;
+  Address DITTO Arg(1);            /* Invoke DITTO */
+  If rc <> 0 Then Do
+    Say ' Error: "'Arg(1)'", rc =' rc;
+    Do i = 1 to ditto.0
+      Say ' ' ditto.i;
+    End i
+  End
+Return;
+
+Kword: Procedure;
+  Parse Arg v;
+Return (Pos('=',v) > 0);
+
+SayAll: Procedure;
+  Parse Arg msg;
+  oldout = ASSGN('STDOUT','SYSLOG');
+  Say msg;
+  oldout = ASSGN('STDOUT','SYSLST');
+  Say msg;
+Return;
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */

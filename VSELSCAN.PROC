@@ -1,0 +1,353 @@
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* REXX: VSELSCAN   Proc Created 08/15/2003   By Dave Clark        */
+/*                  Last Revised 05/14/2013                        */
+/*                                                                 */
+/* This procedure scans one or more specified VSE sub-libraries to */
+/* find all members that contain a specified string and delete the */
+/* found string  or  replace  it  with  another  specified string. */
+/* Selection  of  the  sub-library(s)  and  member(s),  which  may */
+/* include optional (LIBR-supported) wildcard characters,  is(are) */
+/* specified via the PARM arguement  and the FIND and REPL strings */
+/* are specified via card input (SYSIPT).                          */
+/*                                                                 */
+/* // EXEC REXX=VSELSCAN,PARM='...'                                */
+/*                                                                 */
+/* Arguments are: <USR=>userid                                     */
+/*                <LIB=>library or library.sublibrary              */
+/*                <MEM=membername.membertype>                      */
+/*                <CASE={MATCH|IGNORE}>                            */
+/*                                                                 */
+/* Where: USR=     is an optional keyword tag,                     */
+/*        userid   is the authorizing user id.                     */
+/*        LIB=     is an optional keyword tag,                     */
+/*        library  or                                              */
+/*        library.sublibrary  must be formatted according to the   */
+/*                   rules for the LIBR LISTDIR LIB= or SUBLIB=    */
+/*                   parms or, if MEM is also specified, the rules */
+/*                   for the LIBR ACCESS SUBLIB= parm.             */
+/*        MEM=     is required to prevent processing all members,  */
+/*        membername.membertype  must be formatted according to    */
+/*                   the rules for the LIBR LISTDIR mn.mt parm.    */
+/*        CASE=    is required to override the default,            */
+/*          MATCH  requests an exact match as specified (default), */
+/*          IGNORE requests case to be ignored when comparing.     */
+/*                                                                 */
+/* Note: The DUMP, OBJ, and PHASE member types are always ignored. */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* No warranty is expressed or implied.    Written by Dave L Clark */
+/* Neither the author nor the company is   DAPSCO Information Sys. */
+/* responsible for any loss or damage      3110 Kettering Blvd.    */
+/* resulting from the use of this code.    Dayton, OH  45439       */
+/* Source is provided on an as-is basis.   Phone (937)294-5331     */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* Sample JCL to merely search:                                    */
+/*                                                                 */
+/*   * $$ JOB JNM=VSELSCAN,DISP=D,CLASS=C                          */
+/*   * $$ LST LST=SYSLST,DISP=D,CLASS=Z                            */
+/*   // JOB    VSELSCAN   VSE LIBRARY SCAN AND OPTIONAL UPDATE     */
+/*   // LIBDEF *,SEARCH=DAP.PROD,TEMP                              */
+/*   // EXEC   REXX=VSELSCAN,PARM='DLC,LIB=DAP.PROD,MEM=V*.PROC'   */
+/*      FIND='Dave Clark'                                          */
+/*   /* EOD */                                                     */
+/*   /& EOJ                                                        */
+/*   * $$ EOJ                                                      */
+/*                                                                 */
+/* Sample JCL to replace a string:                                 */
+/*                                                                 */
+/*   * $$ JOB JNM=VSELSCAN,DISP=D,CLASS=C                          */
+/*   * $$ LST LST=SYSLST,DISP=D,CLASS=Z                            */
+/*   // JOB    VSELSCAN   VSE LIBRARY SCAN AND OPTIONAL UPDATE     */
+/*   // LIBDEF *,SEARCH=DAP.PROD,TEMP                              */
+/*   // EXEC   REXX=VSELSCAN,PARM='DLC,LIB=DAP.PROD,MEM=V*.PROC'   */
+/*      FIND='Dave Clark'                                          */
+/*      REPL='Dave Leonard Clark'                                  */
+/*   /* EOD */                                                     */
+/*   /& EOJ                                                        */
+/*   * $$ EOJ                                                      */
+/*                                                                 */
+/* Sample JCL to delete a string:                                  */
+/*                                                                 */
+/*   * $$ JOB JNM=VSELSCAN,DISP=D,CLASS=C                          */
+/*   * $$ LST LST=SYSLST,DISP=D,CLASS=Z                            */
+/*   // JOB    VSELSCAN   VSE LIBRARY SCAN AND OPTIONAL UPDATE     */
+/*   // LIBDEF *,SEARCH=DAP.PROD,TEMP                              */
+/*   // EXEC   REXX=VSELSCAN,PARM='DLC,LIB=DAP.PROD,MEM=V*.PROC'   */
+/*      FIND='Dave Clark'                                          */
+/*      REPL                                                       */
+/*   /* EOD */                                                     */
+/*   /& EOJ                                                        */
+/*   * $$ EOJ                                                      */
+/*                                                                 */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+  rc = 0
+  Arg msg
+
+/* ----------------------------------------------------------------- */
+/* Get SYSIPT data                                                   */
+/* ----------------------------------------------------------------- */
+
+  "EXECIO * DISKR SYSIPT ( OPEN FINIS STEM card."
+  If rc <> 0 Then Do
+    Say ' Error: EXECIO returned rc =' rc
+    Exit 16
+  End
+
+/* ----------------------------------------------------------------- */
+/* Validate PARM arguments                                           */
+/* ----------------------------------------------------------------- */
+
+  If msg <> '' & msg <> '?' Then Do
+    Parse Value Space(Translate(msg,' ',',')) With ,
+      uid lib ext 1 'USR=' uid2 . ,
+                  1 'LIB=' lib2 . ,
+                  1 'MEM=' mem . ,
+                  1 'CASE=' case .;
+    If uid2 <> '' Then uid = uid2;
+    If lib2 <> '' Then lib = lib2;
+    If case == '' Then case = 'MATCH';
+    If ext  <> '' Then Do
+      Parse Var ext e1 e2 e3
+      If e3 == '' ,
+      & (Left(e1,4) == 'MEM=' & (Left(e2,5) == 'CASE=' | e2 == '') ,
+      |  Left(e1,5) == 'CASE=' & (Left(e2,4) == 'MEM=' | e2 == '')) ,
+      Then Do
+        ext = '';
+      End
+      If ext <> '' Then Do
+        Say ' Extraneous argument(s) specified:';
+        Say '    EXTRA='ext;
+        msg = '';
+        rc = 12;
+      End
+    End
+    If uid == '' | lib == '' Then Do
+      Say ' Required argument(s) missing:';
+      Say '    UID='uid', LIB='lib;
+      msg = '';
+      rc = 12;
+    End
+  End
+
+  If msg == '' | msg == '?' Then Do
+    Do n = 1 While Left(Sourceline(n),2) = '/*'
+      Say ' 'Sourceline(n);
+    End
+    Exit rc;
+  End
+
+/* ----------------------------------------------------------------- */
+/* Process SYSIPT data                                               */
+/* ----------------------------------------------------------------- */
+
+  If card.0 < 1 | card.1 == "" Then Do
+    Say ' At the very least, a FIND card must be specified.';
+    Exit 12;
+  End
+
+  Parse Var card.1 'FIND=' oldStr
+  oldStr = Strip(oldStr)
+  If oldStr == "" ,
+  |  Pos('FIND=',card.1) == 0 Then Do
+    Say ' FIND card';
+    Say ' must be first, and';
+    Say ' must specify both keyword and value.';
+    Exit 12;
+  End
+  If Left(oldStr,1) == '"' ,
+  & Right(oldStr,1) == '"' Then
+    oldStr = Strip(oldStr,,'"')
+  Else Do
+    If Left(oldStr,1) == "'" ,
+    & Right(oldStr,1) == "'" Then Do
+      oldStr = Strip(oldStr,,"'")
+    End
+  End
+
+  If card.0 > 1 Then Do
+    If Pos('REPL',card.2) == 0 Then Do
+      Say ' REPL card, if specified,';
+      Say ' must be second, and';
+      Say ' must specify at least the keyword';
+      Say '      (for a string delete operation).';
+      Exit 12;
+    End
+    Parse Var card.2 'REPL=' newStr
+    newStr = Strip(newStr)
+    If Left(newStr,1) == '"' ,
+    & Right(newStr,1) == '"' Then
+      newStr = Strip(newStr,,'"')
+    Else Do
+      If Left(newStr,1) == "'" ,
+      & Right(newStr,1) == "'" Then Do
+        newStr = Strip(newStr,,"'")
+      End
+    End
+  End
+
+  If card.0 > 2 Then Do
+    Say ' Too many SYSIPT cards specified.';
+    Exit 12;
+  End
+
+/* ----------------------------------------------------------------- */
+/* Collect member names                                              */
+/* ----------------------------------------------------------------- */
+
+  'SETUID' uid
+
+  mbr.0 = 0
+  sublib = ''
+
+  sysipt.0 = 1
+  If mem == '' Then Do
+    Say ' SCAN LIB='lib
+    If Pos('.',lib) == 0 Then
+      sysipt.1 = ' LISTD  L='lib'  OUTPUT=SHORT'
+    Else Do
+      sysipt.1 = ' LISTD  S='lib'  OUTPUT=SHORT'
+    End
+  End
+  Else Do
+    Say ' SCAN LIB='lib',MEM='mem
+    sysipt.0 = 2
+    sysipt.1 = ' ACCESS S='lib
+    sysipt.2 = ' LISTD  'mem'  OUTPUT=SHORT'
+  End
+
+  y = REXXIPT('sysipt.')
+  y = OUTTRAP('syslst.','*','NOCONCAT')
+  Address LINK 'LIBR'        /* generate member listing        */
+  If rc <> 0 Then Do
+    Say ' Error: Building member list; rc =' rc
+    Do i = 1 to syslst.0
+      Say syslst.i
+    End i
+    Exit 16
+  End
+
+  lib.0 = 0
+
+  Do i = 1 to syslst.0
+    If Left(syslst.i,17) == 'L113I RETURN CODE' Then Do
+      sublib = '';
+      Iterate;
+    End
+    If Left(syslst.i,17) == '-----------------' Then Iterate
+    If Left(syslst.i,17) == 'DIRECTORY DISPLAY' Then Do
+      Parse Var syslst.i 'SUBLIBRARY=' sublib .;
+      i = i + 5;
+      Iterate;
+    End
+    If sublib == '' Then Iterate;
+    Parse Var syslst.i n1 t1 n2 t2 n3 t3 .;
+    If n1 == '' Then Do
+      sublib = '';
+      Iterate;
+    End
+    If sublib <> oldlib Then Do
+      j = lib.0 + 1;
+      lib.j = sublib;
+      lib.0 = j;
+    End
+    oldlib = sublib
+    If t1 <> 'DUMP' & t1 <> 'OBJ' & t1 <> 'PHASE' Then Do
+      j = mbr.0 + 1;
+      mbr.j = sublib'.'n1'.'t1;
+      mbr.0 = j;
+    End
+    If n2 <> '' ,
+    &  t2 <> 'DUMP' & t2 <> 'OBJ' & t2 <> 'PHASE' Then Do
+      j = mbr.0 + 1;
+      mbr.j = sublib'.'n2'.'t2;
+      mbr.0 = j;
+    End
+    If n3 <> '' ,
+    &  t3 <> 'DUMP' & t3 <> 'OBJ' & t3 <> 'PHASE' Then Do
+      j = mbr.0 + 1;
+      mbr.j = sublib'.'n3'.'t3;
+      mbr.0 = j;
+    End
+  End i
+
+/* ----------------------------------------------------------------- */
+/* Loop on all member names                                          */
+/* ----------------------------------------------------------------- */
+
+  Say ' FIND="'oldStr'" Length='Length(oldStr);
+  If card.0 > 1 Then Do
+    Say ' REPL="'newStr'" Length='Length(newStr);
+    read = 'DISKRU'
+    done = 'DISKW'
+  End
+  Else Do
+    read = 'DISKR'
+    done = 'DISKR'
+  End
+  If case <> 'MATCH' Then oldStr = Translate(oldStr);
+
+  OldRexxMsg = RexxMsg("OFF");    /* we'll get the messages ourself */
+
+  Do i = 1 to mbr.0
+    hdr = 1;
+    EXECIO 0 read mbr.i "( OPEN )";
+    If rc <> 0 Then Do
+      Say ' '
+      Say ' Error: Opening member "'mbr.i'"; rc = 'rc
+      Iterate
+    End
+    Do Forever While rc == 0
+      EXECIO 1 read mbr.i "( STEM data. )";
+      If rc <> 0 Then Iterate
+      If case == 'MATCH' Then
+        p = Pos(oldStr,data.1)
+      Else Do
+        p = Pos(oldStr,Translate(data.1))
+      End
+      If p == 0 Then Iterate
+      If hdr Then Do
+        hdr = 0
+        Say ' '
+        Say ' Member: 'mbr.i
+        Say ' -------|---+----1----+----2----+----3----+----4'||,
+                    '----+----5----+----6----+----7----+----|';
+      End
+      Say ' Found: 'data.1;
+      If card.0 > 1 Then Do
+        l = Length(data.1);
+        Do Forever While p > 0
+          If newStr = "" Then
+            data.1 = DelStr(data.1,p,Length(oldStr));
+          Else Do
+            data.1 = ReplStr(oldStr,data.1,newStr,1,case);
+          End
+          If case == 'MATCH' Then
+            p = Pos(oldStr,data.1)
+          Else Do
+            p = Pos(oldStr,Translate(data.1))
+          End
+        End
+        data.1 = Left(data.1,l);
+        Say ' Write: 'data.1;
+        EXECIO 1 DISKW mbr.i "( STEM data. )";
+        If rc == 1 Then rc = 0;
+      End
+    End
+    EXECIO 0 done mbr.i "( FINIS )";
+  End i
+
+  Say ' '
+  Say ' 'Copies('=',87);
+  Say ' Scanned 'mbr.0' members in 'lib.0' libraries.'
+
+/* ----------------------------------------------------------------- */
+/* Return to caller                                                  */
+/* ----------------------------------------------------------------- */
+
+Exit rc
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */

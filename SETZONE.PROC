@@ -1,0 +1,408 @@
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* REXX: SETZONE       Proc Created 07/13/2005       By Dave Clark */
+/*                     Last Revised 08/20/2009                     */
+/*                                                                 */
+/*      By default,  this procedure  queries the current,  running */
+/* VSE system to  determine  the  name  of  the IPL procedure used */
+/* (from SIR command output).   Optionally, the name of a specific */
+/* IPL procedure may be specified for processing.   Then, that IPL */
+/* procedure is saved (via LIBR,  to .SAVE member) and dynamically */
+/* modified, via EXECIO, to both remove any SET ZONEBDY statements */
+/* and insert new SET ZONEBDY  statements for the current year and */
+/* the next year.   The  only  thing  you  need  to supply to this */
+/* procedure  is  the  3-character  zone  id  to  use  during  the */
+/* appropriate times of the year.                                  */
+/*                                                                 */
+/* // EXEC REXX=SETZONE,PARM='...'                                 */
+/*                                                                 */
+/* Parms: <DST=>dst                                                */
+/*        <BEG=><{1ST|2ND|3RD|4TH|LAST}/{SU|MO|TU|WE|TH|FR|SA}/mm> */
+/*        <STD=>std                                                */
+/*        <END=><{1ST|2ND|3RD|4TH|LAST}/{SU|MO|TU|WE|TH|FR|SA}/mm> */
+/*        <OPT=><{TEST|UPDATE}>                                    */
+/*        <PROC=><procname>                                        */
+/* Notes:                                                          */
+/*   Must be delimited by either commas, spaces, or both.          */
+/*   The order is positional -- unless keywords are specified.     */
+/*   If positional argument omitted, keywords required thereafter. */
+/*                                                                 */
+/* Where: < > encloses identifiers or values that are optional     */
+/*        { } encloses a set of values, one of which must be coded */
+/*         |  is used to separate mutually exclusive values        */
+/*         /  is a required delimiter for grouped arguments        */
+/*        DST=      is an optional keyword tag and                 */
+/*        dst       is the 3-character zone id to use during       */
+/*                    Daylight Saving Time;                        */
+/*        BEG=      is an optional keyword for when DST begins     */
+/*        {1ST|2ND|3RD|4TH|LAST} designates which DOW occurrence   */
+/*        {SU|MO|TU|WE|TH|FR|SA} designates day of the week (DOW)  */
+/*        mm        designates the beginning month number;         */
+/*        STD=      is an optional keyword tag and                 */
+/*        std       is the 3-character zone id to use during       */
+/*                    Standard Time;                               */
+/*        END=      is an optional keyword for when DST ends, and  */
+/*        {1ST|2ND|3RD|4TH|LAST} designates which DOW occurrence   */
+/*        {SU|MO|TU|WE|TH|FR|SA} designates day of the week (DOW)  */
+/*        mm        designates the ending month number;            */
+/*        OPT=      is an optional keyword tag and                 */
+/*        TEST      only displays the resulting changes, while     */
+/*        UPDATE    actually applies the changes to the IPL deck.  */
+/*        PROC=procname designates an optional IPL procedure name  */
+/*                  to be used in subsequent processing.           */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* No warranty is expressed or implied.    Written by Dave L Clark */
+/* Neither the author nor the company is   DAPSCO Information Sys. */
+/* responsible for any loss or damage      3110 Kettering Blvd.    */
+/* resulting from the use of this code.    Dayton, OH  45439       */
+/* Source is provided on an as-is basis.   Phone (937)294-5331     */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* Example job:                                                    */
+/* // JOB    SETZONE   SET ZONE BOUNDARIES IN IPL DECK             */
+/* // EXEC   REXX=SETZONE,                                       X */
+/*                PARM='EDT,1ST/SU/04,EST,LAST/SU/10,OPT=TEST'     */
+/* /& EOJ                                                          */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+  Parse Source sys env pgm tokens;
+
+  False = (0=1);
+  True  = (1=1);
+
+  years = 2;       /* number of years to generate */
+
+  rc = 0;
+  Arg msg;
+
+/* ----------------------------------------------------------------- */
+/* Validate PARM arguments                                           */
+/* ----------------------------------------------------------------- */
+
+  If msg <> '' & msg <> '?' Then Do
+    Parse Value Space(Translate(msg,' ',',')) With ,
+      dst beg std end opt ipl ext 1 'DST=' dst2 . ,
+                                  1 'BEG=' beg2 . ,
+                                  1 'STD=' std2 . ,
+                                  1 'END=' end2 . ,
+                                  1 'OPT=' opt2 . ,
+                                  1 'PROC=' ipl2 .;
+    If dst2 <> '' Then dst = dst2;     /* if keyword used,... */
+    If beg2 <> '' Then beg = beg2;     /* if keyword used,... */
+    If std2 <> '' Then std = std2;     /* if keyword used,... */
+    If end2 <> '' Then end = end2;     /* if keyword used,... */
+    If opt2 <> '' Then opt = opt2;     /* if keyword used,... */
+    If ipl2 <> '' Then ipl = ipl2;     /* if keyword used,... */
+    If Kword(dst) Then dst = '';       /* positional omitted? */
+    If Kword(beg) Then beg = '';       /* positional omitted? */
+    If Kword(std) Then std = '';       /* positional omitted? */
+    If Kword(end) Then end = '';       /* positional omitted? */
+    If Kword(opt) Then opt = '';       /* positional omitted? */
+    If Kword(ipl) Then ipl = '';       /* positional omitted? */
+    If beg  == '' Then beg = '2ND/SU/03';   /* if omitted, default */
+    If end  == '' Then end = '1ST/SU/11';   /* if omitted, default */
+    If opt  == '' Then opt = 'TEST';        /* if omitted, default */
+    btst = Strip(Translate(beg,' ','/'));
+    etst = Strip(Translate(end,' ','/'));
+    If dst == '' | std = '' | ext <> '',
+    |  Words(btst) <> 3 | Words(etst) <> 3 Then Do
+      Say ' Missing or extraneous argument(s) specified:';
+      Say '  DST='dst',BEG='beg',STD='std',END='end',OPT='opt||,
+          ',PROC='ipl',EXTRA="'ext'"';
+      msg = '';
+      rc = 4;
+    End
+  End
+
+  If msg == '' | msg == '?' Then Do
+    Do n = 1 While Left(Sourceline(n),2) = '/*'
+      Say ' 'Sourceline(n);
+    End
+    Exit rc;
+  End
+
+  Say ' Using DST BEG='beg', DST END='end;
+  Say ' ';
+
+  beg = Translate(beg,' ','/');
+  end = Translate(end,' ','/');
+  beg = Left(Word(beg,1),1) Left(Word(beg,2),2) Left(Word(beg,3),3);
+  end = Left(Word(end,1),1) Left(Word(end,2),2) Left(Word(end,3),3);
+
+/* ----------------------------------------------------------------- */
+/* Begin processing                                                  */
+/* ----------------------------------------------------------------- */
+
+  cnsl  = pgm;
+  mask  = 'FFFFFFFFFFFF0000'X;     /* compare CARTs on first 6 bytes */
+  rsp.  = '';
+
+/* ----------------------------------------------------------------- */
+/* Process SIR command output for IPL procedure member name          */
+/* ----------------------------------------------------------------- */
+
+  If ipl == '' Then Do
+    Call RexxConsole 'SZ_SIR', 'SIR';
+    Do i = 1 To rsp.0
+      If WordPos("IPL-PROC",rsp.i) > 0 Then Do
+        Parse Var rsp.i "IPL-PROC" "=" ipl .;
+        Leave;
+      End
+    End
+  End
+
+  If ipl == '' Then Do
+    Say pgm': IPL procedure name not found.';
+    Exit 4;
+  End
+
+/* ----------------------------------------------------------------- */
+/* Process IPL procedure member                                      */
+/* ----------------------------------------------------------------- */
+
+  rec.  = '';
+  rec.0 = 0;
+
+  tmp = 'IJSYSRS.SYSLIB.'ipl'.PROC';
+  "EXECIO * DISKR" tmp "( OPEN FINIS STEM rec. )";
+  If rc <> 0 Then Do
+    Say pgm': Error reading from "'tmp'"; rc = 'rc
+    Exit 4;
+  End
+
+  ntf = True;
+  pfx.  = '';
+  pfx.0 = 0;
+  sfx.  = '';
+  sfx.0 = 0;
+
+  Say ' Removal from' ipl'.PROC:';
+
+  Do i = 1 To rec.0
+    If Pos("ZONEBDY", rec.i) > 0 Then Do
+      Say '  'rec.i;
+      ntf = False;
+      Iterate;
+    End
+    If ntf Then Do
+      n     = pfx.0 + 1;
+      pfx.n = rec.i;
+      pfx.0 = n;
+    End
+    Else Do
+      n     = sfx.0 + 1;
+      sfx.n = rec.i;
+      sfx.0 = n;
+    End
+  End
+
+  Say ' ';
+
+  If sfx.0 = 0 Then Do
+    Say pgm': IPL procedure contains no ZONEBDY statements.';
+    Exit 4;
+  End
+
+/* ----------------------------------------------------------------- */
+/* Generate ZONEBDY statements                                      */
+/* ----------------------------------------------------------------- */
+
+  rec.  = '';
+  rec.0 = 0;
+
+  Do i = 1 to pfx.0
+    n     = rec.0 + 1;
+    rec.n = pfx.i;
+    rec.0 = n;
+  End
+
+  Say ' Inserts into' ipl'.PROC:';
+
+  udate = USAdate();
+    udate = SetDayOfWeek(SubStr(udate,1,6)||(SubStr(udate,7,4)-1), end);
+    Call SetZoneBoundary udate, std;
+  Do years
+    udate = SetDayOfWeek(SubStr(udate,1,6)||(SubStr(udate,7,4)+1), beg);
+    Call SetZoneBoundary udate, dst;
+    udate = SetDayOfWeek(udate, end);
+    Call SetZoneBoundary udate, std;
+  End
+
+  Say ' ';
+
+  Do i = 1 to sfx.0
+    n     = rec.0 + 1;
+    rec.n = sfx.i;
+    rec.0 = n;
+  End
+
+  If opt <> 'UPDATE' Then Do
+    Say ' ...not updated.';
+    Exit rc;
+  End
+
+/* ----------------------------------------------------------------- */
+/* Save IPL procedure first                                          */
+/* ----------------------------------------------------------------- */
+
+  sysipt.  = '';
+  sysipt.0 = 2;
+  sysipt.1 = ' CONNECT S=IJSYSRS.SYSLIB:IJSYSRS.SYSLIB';
+  sysipt.2 = ' COPY   'ipl'.PROC:'ipl'.SAVE REPLACE=YES';
+
+  y = REXXIPT('sysipt.');
+  y = OUTTRAP('syslst.','*','NOCONCAT');
+
+  Address LINK 'LIBR';
+  If rc <> 0 Then Do
+    Say pgm': VSE Librarian error, rc = 'rc;
+    Say ' ';
+    Say ' Input:';
+    Do i = 1 to sysipt.0
+      Say '   'sysipt.i;
+    End i
+    Say ' ';
+    Say ' Output:';
+    Do i = 1 to syslst.0
+      Say '   'syslst.i;
+    End i
+    Exit 8;
+  End
+
+/* ----------------------------------------------------------------- */
+/* Save records to library member                                    */
+/* ----------------------------------------------------------------- */
+
+  If rec.0 > 0 Then Do
+    "EXECIO * DISKW" tmp "( OPEN FINIS STEM rec. )";
+    If rc <> 0 Then Do
+      Say pgm': Error writing into "'tmp'"; rc = 'rc;
+    End
+  End
+
+/* ----------------------------------------------------------------- */
+/* Exit procedure                                                    */
+/* ----------------------------------------------------------------- */
+
+  Say ' ...updated!';
+Exit rc;
+
+/* ----------------------------------------------------------------- */
+/* Internal Functions and Routines                                   */
+/* ----------------------------------------------------------------- */
+
+Kword: Procedure Expose True False;
+  Parse Arg v;
+  If Pos('=',v) > 0 Then
+    Return True;
+Return False;
+
+LeapYear: Procedure Expose True False;
+  Arg year .;
+  If year < 100 Then If year <= 69 Then year = 2000 + year;
+  If year < 100 Then If year >= 70 Then year = 1900 + year;
+  If (year // 400) == 0 Then Return True;
+  If (year // 100) == 0 Then Return False;
+  If (year //   4) == 0 Then Return True;
+Return False;
+
+RexxConsole: Procedure Expose cnsl mask rsp.
+  Arg cart, cmd;
+  Address CONSOLE "ACTIVATE NAME" cnsl "PROFILE REXX";
+  If rc <> 0 Then Do
+    Say cnsl': Error activating "'cnsl'" console; rc =' rc;
+    Exit 4;
+  End
+  Address CONSOLE "CART" cart;
+  If rc <> 0 Then Do
+    Say cnsl': Error setting "'cart'" CART; rc =' rc;
+    Exit 4;
+  End
+  Address CONSOLE cmd;
+  If rc <> 0 Then Do
+    Say cnsl': Error issuing "'cmd'" command; rc =' rc;
+    Exit 4;
+  End
+  rc = GETMSG('rsp.','RESP',cart,mask,3);
+  If rc <> 0 & rc <> 5 Then Do
+    Say cnsl': Error retrieving "'cmd'" response; rc =' rc;
+    Exit 4;
+  End
+  Address CONSOLE "DEACTIVATE" cnsl;
+  If rc <> 0 Then Do
+    Say cnsl': Error deactivating "'cnsl'" console; rc =' rc;
+    Exit 4;
+  End
+Return;
+
+SetDayOfWeek: Procedure Expose True False;
+  Arg idate, day dow mm .;
+/*
+    Returns an MM/DD/YYYY formatted date for the specified occurrence
+    of the specified day-of-the-week in the specified month in the
+    year implied by the input date.
+
+    Where: idate = an mm/dd/yyyy date (erroneous results if incorrect)
+           day   = desired day occurence (1 to 4, or 'L' for LAST)
+           dow   = desired day of week   (2 char DOW: 'SU' thru 'SA')
+           mm    = desired month number  (defaults to 04 if invalid)
+*/
+  If DataType(mm,"W")<>True | mm<1 | mm>12 Then mm = 3; /* default */
+  mm = Right(mm,2,'0');                /* set 2-digit month number */
+  idate = Translate(idate,' ','/');    /* drop slashes for convert */
+  If day <> 'L' Then
+    idate = Word(idate,3)||mm||'01';        /* convert to Std date */
+  Else Do
+    If LeapYear(Word(idate,3)) Then
+      dom  = '31 29 31 30 31 30 31 31 30 31 30 31';
+    Else Do
+      dom  = '31 28 31 30 31 30 31 31 30 31 30 31';
+    End
+    idate = Word(idate,3)||mm||Word(dom,mm);/* convert to Std date */
+  End
+  idate = Date('Base',idate,'Standard');    /* convert to Basedays */
+  Select
+  When dow == 'SA' Then
+    dow = 'Saturday Sunday Monday Tuesday Wednesday Thursday Friday';
+  When dow == 'FR' Then
+    dow = 'Friday Saturday Sunday Monday Tuesday Wednesday Thursday';
+  When dow == 'TH' Then
+    dow = 'Thursday Friday Saturday Sunday Monday Tuesday Wednesday';
+  When dow == 'WE' Then
+    dow = 'Wednesday Thursday Friday Saturday Sunday Monday Tuesday';
+  When dow == 'TU' Then
+    dow = 'Tuesday Wednesday Thursday Friday Saturday Sunday Monday';
+  When dow == 'MO' Then
+    dow = 'Monday Tuesday Wednesday Thursday Friday Saturday Sunday';
+  Otherwise
+    dow = 'Sunday Monday Tuesday Wednesday Thursday Friday Saturday';
+  End
+  dow = WordPos(Date('Weekday',idate,'Base'),dow) - 1;  /* get day */
+  If day == 'L' Then
+    idate = idate - dow;                     /* adjust bkwd to DOW */
+  Else Do
+    If dow = 0 Then dow = 7;
+    If DataType(day,"W") <> True Then day = 1; /* error correction */
+    if dow <> 0 | day > 1 Then Do
+      idate = idate + (7-dow) + ((day-1)*7); /* adjust frwd to DOW */
+    End
+  End
+Return USAdate(idate,'Base');          /* convert to full USA date */
+
+SetZoneBoundary: Procedure Expose rec.;
+  Arg _date, _zone .;
+  _n     = rec.0 + 1;
+  rec._n = 'SET ZONEBDY,DATE='_date',CLOCK=02/00/00,'_zone;
+  rec.0  = _n;
+  Say '  'rec._n;
+Return;
+
+USAdate: Procedure;
+  Arg input_date, input_format .;      /* optional arguments */
+  If Length(input_date) = 0 Then _date = Date('Standard')
+  Else _date = Date('Standard', input_date, input_format);
+Return SubStr(_date,5,2)'/'SubStr(_date,7,2)'/'SubStr(_date,1,4);
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */

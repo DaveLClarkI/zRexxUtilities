@@ -1,0 +1,214 @@
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* REXX: POFFLOAD      Proc Created 09/24/2008       By Dave Clark */
+/*                     Last Revised 09/25/2008                     */
+/*                                                                 */
+/*      This procedure  supports  the  combined  use  of the POWER */
+/* POFFLOAD command with  VTAPE  by  temporarily holding up normal */
+/* JCL processing until POWER completes its processing.  Thus, the */
+/* expected passed  POWER  command  should  be  some  form  of the */
+/* POFFLOAD command with  the  BACKUP,  SAVE,  or PICKUP parameter */
+/* specified -- though LOAD  and  SELECT are also supported.   The */
+/* passed command is issued and  this procedure waits for POWER to */
+/* complete the specified offload process.                         */
+/*                                                                 */
+/* // EXEC REXX=POFFLOAD,PARM='command string'                     */
+/*                                                                 */
+/* Note that this procedure also employs an operator communication */
+/* exit routine and,  thus,  may be terminated by simply messaging */
+/* the partition.  No data is examined from the MSG command.       */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* No warranty is expressed or implied.    Written by Dave L Clark */
+/* Neither the author nor the company is   WinWholesale Group Svcs */
+/* responsible for any loss or damage      3110 Kettering Blvd.    */
+/* resulting from the use of this code.    Dayton, OH  45439       */
+/* Source is provided on an as-is basis.   Phone (937)294-5331     */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* Example job:                                                      */
+/*                                                                   */
+/* // JOB    POFFLOAD   DUMP POWER POFFLOAD TO VTAPE                 */
+/* // ON     $ABEND OR $CANCEL GOTO STOP                             */
+/* // ON     $RC > 15 GOTO STOP                                      */
+/* /* EOD */                                                         */
+/* // SETPARM CUU=F80                                                */
+/* /* EOD */                                                         */
+/* // VTAPE  START,UNIT=&CUU,LOC=xxx.xxx.xxx.xxx,SCRATCH,           +*/
+/*                FILE='C:\DOCUMENTS AND SETTINGS\DLCLARK\DLCPUB\', +*/
+/*                FILE='IBM\POWER\POFFLOAD.AWS'                      */
+/* /* EOD */                                                         */
+/* // EXEC   REXX=POFFLOAD,PARM='O BACKUP,ALL,&CUU,LTAPE=NO'         */
+/* /* EOD */                                                         */
+/* /. STOP                                                           */
+/* // VTAPE  STOP,UNIT=&CUU                                          */
+/* /& EOJ &/                                                         */
+/*                                                                   */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+  Parse Source sys env pgm tokens;
+
+/* Supported POWER responses are as follows:                         */
+/*                                                                   */
+/* 1Q2AI OFFLOADING function SUCCESSFULLY COMPLETED ON cuu           */
+/* 1Q5LI VSE/POWER OFFLOAD function TERMINATED FOR UNIT cuu          */
+/* 1Q5MI OFFLOAD function JOURNALING ON cuu TERMINATED               */
+/* 1Q5NI OFFLOADING ERROR ON task,cuu                                */
+/* 1Q65I JOB jobname number suffix queue ERRONEOUS                   */
+/* 1RF0I commandcode OPERAND nn CURRENT DBLK SIZE nnnnn TOO BIG      */
+/* 1R5BI commandcode COMMAND IGNORED, RC=nnnn                        */
+/* 1R53I commandcode INVALID DENSITY                                 */
+/* 1R54I commandcode CLASS class INVALID                             */
+/*                                                                   */
+/* To add more, update the following string variable appropriately:  */
+  msgids = '|1Q2AI|1Q5LI|1Q5MI|1Q5NI|1Q65I|1RF0I|1R5BI|1R53I'||,
+           '|1R54I|';
+  msgrc0 = '|1Q2AI|';              /* "normal" vs. "error" situation */
+
+  rc = 0;
+  Arg cmd;
+
+/* ----------------------------------------------------------------- */
+/* Validate PARM arguments                                           */
+/* ----------------------------------------------------------------- */
+
+  If cmd <> '?' Then Do
+    If cmd == '' Then Do
+      Say ' Missing argument(s):';
+      Say '  CMD="'cmd'"';
+      cmd = '';
+      rc = 4;
+    End
+  End
+
+  If cmd == '' | cmd == '?' Then Do
+    Do n = 1 While Left(Sourceline(n),2) = '/*'
+      Say ' 'Sourceline(n);
+    End
+    Exit rc;
+  End
+
+  Call SayAll pgm": Using CMD='"cmd"'";
+  Say ' ';
+
+/* ----------------------------------------------------------------- */
+/* Initialize REXX Console variables                                 */
+/* ----------------------------------------------------------------- */
+
+  msgid = '';
+  x = SYSVAR('SYSPOWJNM');       /* get POWER job name               */
+  cnsl  = SYSPOWJNM;             /* name for your console interface  */
+  cart  = '';                    /* CART is for GET-RESP not GET-MSG */
+  mask  = 'FFFFFFFFFFFF0000'X;   /* compare CARTs on first 6 bytes   */
+
+/* ----------------------------------------------------------------- */
+/* Issue POWER OFFLOAD and wait for POWER to complete the OFFLOAD    */
+/* ----------------------------------------------------------------- */
+
+  oc = OPERMSG('ON');
+  Call RexxConsole cart, 'INIT', 'REXALLRC';     /* all console msgs */
+
+  Call RexxConsole cart, 'PUT', cmd;
+
+  Do c = 1
+    Call RexxConsole cart, 'GET', 'MSG';
+    Do s = 1 To msgs.0
+      Parse Var msgs.s . . msgid .;
+      If Index(msgids,'|'||msgid||'|') > 0 Then Leave c;
+    End
+    oc = OPERMSG('MSGDATA');
+    If Length(oc) > 0 Then Leave c;
+  End
+
+  Call RexxConsole cart, 'TERM';
+  oc = OPERMSG('OFF');
+
+/* ----------------------------------------------------------------- */
+/* Exit procedure                                                    */
+/* ----------------------------------------------------------------- */
+
+  If msgid <> '',
+  &  Index(msgrc0,'|'||msgid||'|') > 0,
+  Then
+    rc = 0;
+  Else Do
+    rc = 8;
+  End
+
+Exit rc;
+
+/* ----------------------------------------------------------------- */
+/* Internal Functions and Routines                                   */
+/* ----------------------------------------------------------------- */
+
+RexxConsole: Procedure Expose pgm cnsl mask msgs.,
+                              mdbcpnum  mdbcret  mdbgdom   mdbghold,
+                              mdbgjbnm  mdbgmid  mdbgdstp  mdbgtime,
+                              mdbcpnum. mdbcret. mdbgdom.  mdbghold.,
+                              mdbgjbnm. mdbgmid. mdbgdstp. mdbgtime.;
+  Arg cart, action, data;
+
+  Select
+
+  When action = 'INIT' Then
+    Do
+      Address CONSOLE "ACTIVATE NAME" cnsl "PROFILE" data;
+      If rc <> 0 Then Do
+        Say pgm': Error activating "'cnsl'" console; rc =' rc;
+        Exit 4;
+      End
+      If cart <> '' Then Do
+        Address CONSOLE "CART" cart;
+        If rc <> 0 Then Do
+          Say pgm': Error setting "'cart'" CART; rc =' rc;
+          Exit 4;
+        End
+      End
+    End
+
+  When action = 'PUT'  Then
+    Do
+      Address CONSOLE data;
+      If rc <> 0 Then Do
+        Say pgm': Error issuing "'data'" command; rc =' rc;
+        Exit 4;
+      End
+    End
+
+  When action = 'GET'  Then
+    Do
+      msgs. = '';
+      msgs.0 = 0;
+      If cart = '' Then
+        rc = GETMSG('msgs.',data,,,30);
+      Else Do
+        rc = GETMSG('msgs.',data,cart,mask,30);
+      End
+      If rc <> 0 & rc <> 4 & rc <> 5 Then Do
+        Say pgm': Error retrieving "'data'" response; rc =' rc;
+        Exit 4;
+      End
+    End
+
+  Otherwise
+    Do
+      Address CONSOLE "DEACTIVATE" cnsl;
+      If rc <> 0 Then Do
+        Say pgm': Error deactivating "'cnsl'" console; rc =' rc;
+        Exit 4;
+      End
+    End
+
+  End
+Return;
+
+SayAll: Procedure;
+  Parse Arg msg;
+  oldout = ASSGN('STDOUT','SYSLOG');
+  Say msg;
+  oldout = ASSGN('STDOUT','SYSLST');
+  Say msg;
+Return;
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */

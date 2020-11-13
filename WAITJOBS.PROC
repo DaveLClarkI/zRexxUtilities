@@ -1,0 +1,178 @@
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* REXX: WAITJOBS   Proc Created 08/02/2004   By Dave Clark        */
+/*                  Last Revised 07/17/2006                        */
+/*                                                                 */
+/*      This procedure causes the current job to wait until all of */
+/* the named long-running POWER jobs have either terminated or are */
+/* currently  running.   A  console  message  is  issued  every 15 */
+/* seconds  indicating  on  which  jobs  this  procedure  is still */
+/* waiting.   JCL EXEC PARM arguments are wait option,  wait time, */
+/* and a list of POWER  job  names  on  which  to wait and must be */
+/* delimited by either commas, spaces, or both.   Listed POWER job */
+/* names may contain wild-card  characters  of an imbedded '?' (to */
+/* match on any single character)  and/or  an ending '*' (to match */
+/* on all  remaining  characters).   However,  combining wild-card */
+/* matching with the 'UP' wait option may have undesired results.  */
+/*                                                                 */
+/* // EXEC REXX=WAITJOBS,PARM='<{DN|UP},><nn,>...'                 */
+/*                                                                 */
+/* Where: <>   encloses optional parameters;                       */
+/*        {|}  encloses mutually exclusive options;                */
+/*        DN   waits until the listed jobs are down (default);     */
+/*        UP   waits until the listed jobs are up;                 */
+/*        nn   is the number of minutes to wait (default = 10);    */
+/*        ...  is the delimited list of POWER job name(s).         */
+/*                                                                 */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* No warranty is expressed or implied.    Written by Dave L Clark */
+/* Neither the author nor the company is   WinWholesale Group Svc. */
+/* responsible for any loss or damage      3110 Kettering Blvd.    */
+/* resulting from the use of this code.    Dayton, OH  45439       */
+/* Source is provided on an as-is basis.   Phone (937)294-5331     */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* Sample JCL:                                                     */
+/*                                                                 */
+/*   * $$ JOB JNM=MYJOB,DISP=D,CLASS=C                             */
+/*   * $$ LST LST=SYSLST,DISP=D,CLASS=Z                            */
+/*   // JOB    MYJOB CONTINUES AFTER CERTAIN POWER JOBS END        */
+/*   // EXEC   REXX=WAITJOBS,PARM='CICS*'                          */
+/*     ... remainder of job ...                                    */
+/*   /& EOJ                                                        */
+/*   * $$ EOJ                                                      */
+/*                                                                 */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+  Parse Source sys env pgm tokens;
+
+  False = (0=1);                       /* Boolean constants */
+  True  = (1=1);
+
+  rc  = 0
+  Arg msg
+
+/* ----------------------------------------------------------------- */
+/* Validate PARM arguments                                           */
+/* ----------------------------------------------------------------- */
+
+  If msg <> '' & msg <> '?' Then Do
+    msg = Space(Translate(Translate(msg),' ',','));
+    opt = Word(msg,1);                 /* check first parm    */
+    If opt <> 'DN',
+    &  opt <> 'UP' Then                /* if wait option      */
+      opt = 'DN';                      /* default wait option */
+    Else Do                            /* else                */
+      msg = DelWord(msg,1,1);          /* del wait option from parms */
+    End
+    min = Word(msg,1);                 /* check next parm     */
+    If \Datatype(min,'N') Then         /* if wait time        */
+      min = 10;                        /* default wait time   */
+    Else Do                            /* else                */
+      msg = DelWord(msg,1,1);          /* del wait time from parms */
+    End
+    If msg = '' Then Do                /* the rest must be job names */
+      Say pgm': Required argument(s) missing.';
+      rc = 4;
+    End
+  End
+
+  If msg = '' | msg == '?' Then Do     /* print procedure description */
+    Do n = 1 While Left(Sourceline(n),2) = '/*'
+      Say ' 'Sourceline(n);
+    End
+    Exit rc;
+  End
+
+/* ----------------------------------------------------------------- */
+/* Get Current Job Information                                       */
+/* ----------------------------------------------------------------- */
+
+  jdata = Copies(' ', 96);
+  Address LINKPGM "JOBDATA JDATA";
+  mypid = SubStr(jdata, 15, 2);
+
+/* ----------------------------------------------------------------- */
+/* Begin processing                                                  */
+/* ----------------------------------------------------------------- */
+
+  x      = OPERMSG('ON');
+  oldout = ASSGN('STDOUT','SYSLOG');
+
+  Do Forever
+
+    z = OUTTRAP('lst.','*','NOCONCAT');
+    Address POWER "PDISPLAY A,PART";   /* get active partition jobs */
+    If rc <> 0 Then Do
+      Say pgm': POWER command error; rc =' rc;
+      Do z = 1 to lst.0
+        Say lst.z;
+      End
+      Exit 8;
+    End
+    Drop jobs.;                        /* initialize job names array */
+    jobs.  = '';
+    jobs.0 = 0;
+    Do z = 1 To lst.0
+      If Pos("COMMAND PASSED",lst.z) = 0,
+      &  Pos("INACTIVE",lst.z) = 0,
+      &  Pos("SPOOLED",lst.z) = 0 Then Do
+        Parse Value Space(Translate(lst.z,' ',',')) With ,
+              . pid . . jnm .;         /* extract active job info */
+        If pid <> '',
+        &  pid <> mypid Then Do
+          n = jobs.0 + 1;
+          jobs.n = pid jnm;
+          jobs.0 = n;
+        End
+      End
+    End
+
+    cnt = 0;
+    tmp = msg;
+    Do z = 1 To Words(msg)             /* loop on parm job names */
+      Do n = 1 To jobs.0               /* loop on active job names */
+        If WildMtch(Word(jobs.n,2),Word(msg,z),'?*') Then Do
+          cnt = cnt + 1                /* count matching job names */
+          If opt == 'DN' Then          /* report active job names */
+            Say pgm': Waiting on' Word(jobs.n,2),
+                             'in' Word(jobs.n,1) 'to end...';
+          Else Do                      /* else */
+            p = WordPos(Word(msg,z),tmp);
+            tmp = DelWord(tmp,p,1);    /* del active jobs from list */
+            Leave;                     /* and continue loop */
+          End
+        End
+      End
+    End
+
+    If opt == 'DN' & cnt = 0 Then Leave;  /* exit if all jobs down */
+    If opt == 'UP' Then Do                /* else */
+      If tmp = '' Then Leave;             /* exit if all jobs active */
+      Do z = 1 To Words(tmp)              /* report on missing jobs */
+        Say pgm': Waiting on' Word(tmp,z) 'to start...';
+      End
+    End
+
+    z = SLEEP(15);                     /* delay seconds */
+    min = min - .25;                   /* decrement wait time */
+    If min <= 0 Then Do                /* report if expired */
+      Say pgm': Wait timeout occurred...';
+      Leave;                           /* and exit */
+    End
+
+    z = OPERMSG('MSGDATA');       /* check for operator interrupt */
+    If Length(z) > 0 Then Leave;  /* and, if so, exit */
+
+  End
+
+/* ----------------------------------------------------------------- */
+/* Processing complete                                               */
+/* ----------------------------------------------------------------- */
+
+  Say pgm': Continuing...';
+Exit 0;
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */

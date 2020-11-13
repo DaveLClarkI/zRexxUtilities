@@ -1,0 +1,240 @@
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* REXX: CMDREPLY      Proc Created 01/13/2010       By Dave Clark */
+/*                     Last Revised 01/14/2010                     */
+/*                                                                 */
+/*      This procedure issues a  console  command  and waits for a */
+/* message which needs an automatic reply.  Both the command to be */
+/* issued and the automatic reply are specified via SYSIPT.   Note */
+/* that all three parms, with keyword tags shown, are required;    */
+/* but, the reply_string may be omitted for a blank reply.         */
+/*                                                                 */
+/* Parms: CMD=command_string                                       */
+/*        MSG=msgid                                                */
+/*        REP=reply_string                                         */
+/*                                                                 */
+/* Note that this procedure also employs an operator communication */
+/* exit routine and,  thus,  may be terminated by simply messaging */
+/* the partition.  No data is examined from such a MSG command.    */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* No warranty is expressed or implied.    Written by Dave L Clark */
+/* Neither the author nor the company is   WinWholesale Group Svcs */
+/* responsible for any loss or damage      3110 Kettering Blvd.    */
+/* resulting from the use of this code.    Dayton, OH  45439       */
+/* Source is provided on an as-is basis.   Phone (937)294-5331     */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* Example job:                                                    */
+/*                                                                 */
+/* // JOB    CMDREPLY   ISSUE CONSOLE COMMAND AND AUTO. REPLY      */
+/* // EXEC   REXX=CMDREPLY                                         */
+/*    CMD=command_string                /* comments allowed */     */
+/*    MSG=msgid                         /* comments allowed */     */
+/*    REP=reply_string                  /* comments allowed */     */
+/* /* EOD */                                                       */
+/* /& EOJ &/                                                       */
+/*                                                                 */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+  Parse Source _sys _env _pgm _tokens;
+
+  rc = 0;
+  Arg cmd;
+
+/* ----------------------------------------------------------------- */
+/* Get SYSIPT data                                                   */
+/* ----------------------------------------------------------------- */
+
+  "EXECIO * DISKR SYSIPT ( OPEN FINIS STEM card. )";
+  If rc <> 0 Then Do
+    Say ' '_pgm': EXECIO returned rc =' rc;
+    Exit 16;
+  End
+
+/* ----------------------------------------------------------------- */
+/* Validate PARM arguments                                           */
+/* ----------------------------------------------------------------- */
+
+  If cmd == '?' Then Do
+    Do n = 1 While Left(Sourceline(n),2) = '/*'
+      Say ' 'Sourceline(n);
+    End
+    Exit rc;
+  End
+
+/* ----------------------------------------------------------------- */
+/* Pre-process SYSIPT data                                           */
+/* ----------------------------------------------------------------- */
+
+  cmd   = '';
+  msg   = '';
+  rep   = '';
+
+  Do n = 1 to card.0
+    Parse Upper Var card.n p1 '=' p2 '/*';
+    p1 = Strip(p1);
+    p2 = Strip(p2);
+    Select
+      When p1 = 'CMD' Then cmd = p2;
+      When p1 = 'MSG' Then msg = p2
+      When p1 = 'REP' Then rep = IFF(p2=='',' ',p2);
+      Otherwise Do;
+        Say 'Ignored:' p1'='p2;
+      End
+    End
+  End
+
+  If cmd == '' | msg == '' | rep == '' Then Do
+    If cmd == '' Then Say 'CMD parameter not found...';
+    If msg == '' Then Say 'MSG parameter not found...';
+    If rep == '' Then Say 'REP parameter not found...';
+    Say ' '_pgm': Canceled due to missing parameter(s).';
+    Exit 12;
+  End
+
+/* ----------------------------------------------------------------- */
+/* Initialize REXX Console variables                                 */
+/* ----------------------------------------------------------------- */
+
+  x = SYSVAR('SYSPOWJNM');       /* get POWER job name               */
+  cnsl  = SYSPOWJNM;             /* name for your console interface  */
+  cart  = '';                    /* CART is for GET-RESP not GET-MSG */
+  mask  = 'FFFFFFFFFFFF0000'X;   /* compare CARTs on first 6 bytes   */
+
+/* ----------------------------------------------------------------- */
+/* Issue POWER OFFLOAD and wait for POWER to complete the OFFLOAD    */
+/* ----------------------------------------------------------------- */
+
+  oc = OPERMSG('ON');
+  Call RexxConsole cart, 'INIT', 'REXALLRC';     /* all console msgs */
+
+  Call SayAll pgm": Issue CMD='"cmd"'";
+  Call RexxConsole cart, 'PUT', cmd;
+
+  partid = '';
+  replid = '';
+
+  Call SayAll pgm": Wait  MSG='"msg"'";
+  Do c = 1
+    Call RexxConsole cart, 'GET', 'MSG';
+    If msgs.0 = 0 Then
+      Leave;
+    Else Do
+      Say msgs.1;
+      If SubStr(msgs.1,3,1) = "-",
+      &  Pos(msg,SubStr(msgs.1,9)) > 0 Then Do
+        partid = SubStr(msgs.1,1,2)
+        replid = SubStr(msgs.1,4,4)
+        Leave;
+      End
+    End
+    oc = OPERMSG('MSGDATA');
+    If Length(oc) > 0 Then Leave c;
+  End
+
+  If replid <> '' Then Do
+    Call SayAll pgm": Reply REP='"replid rep"'";
+    Call RexxConsole cart, 'PUT', replid rep;
+  End
+
+  Call RexxConsole cart, 'TERM';
+  oc = OPERMSG('OFF');
+
+/* ----------------------------------------------------------------- */
+/* Exit procedure                                                    */
+/* ----------------------------------------------------------------- */
+
+  If replid <> '' Then
+    rc = 0;
+  Else Do
+    rc = 8;
+  End
+
+Exit rc;
+
+/* ----------------------------------------------------------------- */
+/* Internal Functions and Routines                                   */
+/* ----------------------------------------------------------------- */
+
+RexxConsole: Procedure Expose pgm cnsl mask msgs.,
+                              mdbcpnum  mdbcret  mdbgdom   mdbghold,
+                              mdbgjbnm  mdbgmid  mdbgdstp  mdbgtime,
+                              mdbcpnum. mdbcret. mdbgdom.  mdbghold.,
+                              mdbgjbnm. mdbgmid. mdbgdstp. mdbgtime.;
+  Arg cart, action, data;
+
+  Select
+
+  When action = 'INIT' Then
+    Do
+      Address CONSOLE "ACTIVATE NAME" cnsl "PROFILE" data;
+      If rc <> 0 Then Do
+        Say pgm': Error activating "'cnsl'" console; rc =' rc;
+        Exit 4;
+      End
+      If cart <> '' Then Do
+        Address CONSOLE "CART" cart;
+        If rc <> 0 Then Do
+          Say pgm': Error setting "'cart'" CART; rc =' rc;
+          Exit 4;
+        End
+      End
+    End
+
+  When action = 'PUT'  Then
+    Do
+      Address CONSOLE data;
+      If rc <> 0 Then Do
+        Say pgm': Error issuing "'data'" command; rc =' rc;
+        Exit 4;
+      End
+    End
+
+  When action = 'GET'  Then
+    Do
+      msgs. = '';
+      msgs.0 = 0;
+      If cart = '' Then
+        rc = GETMSG('msgs.',data,,,30);
+      Else Do
+        rc = GETMSG('msgs.',data,cart,mask,30);
+      End
+      If rc <> 0 & rc <> 4 & rc <> 5 Then Do
+        Say pgm': Error retrieving "'data'" response; rc =' rc;
+        Exit 4;
+      End
+    End
+
+  Otherwise
+    Do
+      Address CONSOLE "DEACTIVATE" cnsl;
+      If rc <> 0 Then Do
+        Say pgm': Error deactivating "'cnsl'" console; rc =' rc;
+        Exit 4;
+      End
+    End
+
+  End
+Return;
+
+/* ----- Put message on both SYSLOG and on SYSLST ------------------ */
+SayAll: Procedure;
+  Parse Arg msg;
+  oldout = ASSGN('STDOUT','SYSLOG');
+  Say msg;
+  oldout = ASSGN('STDOUT','SYSLST');
+  Say msg;
+Return;
+
+/* ----------------------------------------------------------------- */
+/* IF Function whose first argument should be a Boolean value that   */
+/*             determines which of the other two arguments to return */
+/* ----------------------------------------------------------------- */
+IFF: Procedure;
+  Parse Arg ifCond, isTrue, isFalse;
+  If ifCond = (0=0) Then Return isTrue;
+Return isFalse;
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */

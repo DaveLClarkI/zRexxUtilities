@@ -1,0 +1,65 @@
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* REXX: RXWAIT     Proc Created 02/09/2010   By Dave Clark        */
+/*                  Last Revised 02/09/2010                        */
+/*                                                                 */
+/*      This procedure causes the current job to wait for the EXEC */
+/* PARM specified number of seconds; but, is interruptible via the */
+/* console MSG command with or without the DATA option.            */
+/*                                                                 */
+/* // EXEC REXX=RXWAIT,PARM='nn'                                   */
+/*                                                                 */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* No warranty is expressed or implied.    Written by Dave L Clark */
+/* Neither the author nor the company is   WinWholesale Group Svc. */
+/* responsible for any loss or damage      3110 Kettering Blvd.    */
+/* resulting from the use of this code.    Dayton,  OH 45439       */
+/* Source is provided on an as-is basis.   Phone (937)294-5331     */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+  Parse Source sys env pgm tokens;
+
+  rc  = 0;
+  Arg msg;
+
+/* ----------------------------------------------------------------- */
+/* Validate PARM arguments                                           */
+/* ----------------------------------------------------------------- */
+
+  If msg <> '' & msg <> '?' Then Do
+    If \DataType(msg,'W') Then Do
+      Say pgm': Specified argument must be a whole number;';
+      msg = '';
+      rc = 4;
+    End
+  End
+
+  If msg = '' | msg == '?' Then Do     /* print procedure description */
+    Do n = 1 While Left(Sourceline(n),2) = '/*'
+      Say ' 'Sourceline(n);
+    End
+    Exit rc;
+  End
+
+/* ----------------------------------------------------------------- */
+/* Begin processing                                                  */
+/* ----------------------------------------------------------------- */
+
+  z = OPERMSG('ON');
+
+  Do Forever
+    z = SLEEP(1);
+    z = OPERMSG('MSGDATA');
+    If Length(z) > 0 Then Exit 2;
+    msg = msg - 1;
+    If msg <= 0 Then Leave;
+  End
+
+/* ----------------------------------------------------------------- */
+/* Processing complete                                               */
+/* ----------------------------------------------------------------- */
+
+Exit 0;
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */

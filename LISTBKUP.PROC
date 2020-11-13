@@ -1,0 +1,228 @@
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* REXX: LISTBKUP   Proc Created 03/09/2004   By Dave Clark        */
+/*                  Last Revised 03/09/2004                        */
+/*                                                                 */
+/*      This procedure extracts the IDCAMS Dataset Catalog from an */
+/* IDCAMS backup tape created via the BACKUP command.              */
+/*                                                                 */
+/* // EXEC REXX=LISTBKUP,PARM='...'                                */
+/*                                                                 */
+/* Arguments are: <USR=>userid                                     */
+/*                <CUU=>cuu                                        */
+/* Notes:                                                          */
+/* 1) Must be delimited by either commas, spaces, or both.         */
+/* 2) The order is positional -- unless keyword tags specified.    */
+/* 3) You cannot omit a positional argument and position the next. */
+/*                                                                 */
+/* Where: USR=     is an optional keyword tag;                     */
+/*        userid   is the authorizing user id.                     */
+/*        CUU=     is an optional keyword tag;                     */
+/*        cuu      is the control unit and device address of the   */
+/*                   tape drive where the backup is mounted.       */
+/*                                                                 */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+ 
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* No warranty is expressed or implied.    Written by Dave L Clark */
+/* Neither the author nor the company is   DAPSCO Information Sys. */
+/* responsible for any loss or damage      3110 Kettering Blvd.    */
+/* resulting from the use of this code.    Dayton, OH  45439       */
+/* Source is provided on an as-is basis.   Phone (937)294-5331     */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+ 
+  Parse Source sys env pgm tokens;
+ 
+  rc = 0;
+  Arg msg;
+ 
+/* ----------------------------------------------------------------- */
+/* Validate PARM arguments                                           */
+/* ----------------------------------------------------------------- */
+ 
+  If msg ¬= '' & msg ¬= '?' Then Do
+    Parse Value Space(Translate(msg,' ',',')) With ,
+      uid cuu ext 1 'USR=' uid2 . ,
+                  1 'CUU=' cuu2 .;
+    If uid2 ¬= '' Then uid = uid2;
+    If cuu2 ¬= '' Then cuu = cuu2;
+    If ext  ¬= '' Then Do
+      Say ' EXTRA='ext;
+      Say ' Extraneous argument(s) specified.';
+      msg = '';
+      rc  = 4;
+    End
+    If uid == '',
+    |  cuu == '',
+    Then Do
+      Say ' UID='uid',CUU='cuu;
+      Say ' Required argument(s) missing.';
+      msg = '';
+      rc  = 4;
+    End
+  End
+ 
+  If msg == '' | msg == '?' Then Do
+    Do n = 1 While Left(Sourceline(n),2) = '/*'
+      Say ' 'Sourceline(n);
+    End
+    Exit rc;
+  End
+ 
+/* ----------------------------------------------------------------- */
+/* Begin processing                                                  */
+/* ----------------------------------------------------------------- */
+ 
+  'SETUID' uid;
+  If rc ¬= 0 Then Do
+    Say ' Error: Invalid user id; rc =' rc
+    Exit 4;
+  End
+ 
+  Call 'DITSETUP';                 /* set up DITTO environment */
+ 
+  Call DittoCommand('$SET HEADERPG=NO,PRINTLEN=80,PRINTOUT=REXX');
+  If rc ¬= 0 Then Exit rc;
+ 
+  Call DittoCommand('$REW INPUT='cuu);
+  If rc ¬= 0 Then Exit rc;
+ 
+/* ----------------------------------------------------------------- */
+/* Process tape labels                                               */
+/* ----------------------------------------------------------------- */
+ 
+  data.  = '';
+  data.0 = 0;
+ 
+  Call DittoCommand('$TX INPUT='cuu' VARNAME=data.');
+  If rc ¬= 0 Then Exit rc;
+ 
+  If Left(data.1,4) ¬= 'VOL1' Then Do
+    Say pgm': Tape labels expected for an IDCAMS BACKUP tape.';
+    Exit 8;
+  End
+ 
+  Do i = 1 to data.0
+    lbl = Left(data.i,4);
+    Select
+      When lbl == 'VOL1' Then
+        Do
+          Say pgm': Volume ID    =' Substr(data.i,5,6);
+        End
+      When lbl == 'HDR1' Then
+        Do
+          Say pgm': Tape dataset =' Substr(data.i,5,17);
+          Say pgm': Volume sequ. =' Substr(data.i,28,4);
+          Say pgm': File sequ.no =' Substr(data.i,32,4);
+        End
+      When lbl == 'HDR2' Then
+        Do
+          jobpgm = Substr(data.i,18,17);
+          Say pgm': Job/Program  =' jobpgm;
+          If Pos('IDCAMS',jobpgm) = 0 Then Do
+            Say ' ';
+            Say pgm': Tape not created by IDCAMS BACKUP.';
+            Exit 8;
+          End
+        End
+      Otherwise
+        Say pgm': Unknown tape label encountered - "'lbl'"';
+        Exit 8;
+    End
+  End i
+ 
+/* ----------------------------------------------------------------- */
+/* Process backup catalog records                                    */
+/* ----------------------------------------------------------------- */
+ 
+  data.  = '';
+  data.0 = 0;
+ 
+  Call DittoCommand('$TX INPUT='cuu' VARNAME=data.');
+  If rc ¬= 0 Then Exit rc;
+ 
+  /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+  /*  01  BACKUP-CATALOG-RECORD.                                   */
+  /*    03  BACKUP-CATALOG-HEADER.                                 */
+  /*      05  HEADER-LABEL        PIC  X(04) VALUE 'DBH '.         */
+  /*      05  ???                 PIC  X(04).                      */
+  /*      05  HEADER-DATE1        PIC  X(06).                      */
+  /*      05  HEADER-DATA1        PIC S9(09) COMP.                 */
+  /*      05  HEADER-DATE2        PIC  X(06).                      */
+  /*      05  HEADER-DATA2        PIC S9(09) COMP.                 */
+  /*      05  ???                 PIC S9(04) COMP.                 */
+  /*      05  ???                 PIC S9(04) COMP.                 */
+  /*      05  RECORD-COUNT        PIC S9(09) COMP.                 */
+  /*      05  ENTRY-COUNT         PIC S9(09) COMP.                 */
+  /*      05  RECORD-NUMBER       PIC S9(09) COMP.                 */
+  /*      05  DATA-LENGTH         PIC S9(04) COMP.                 */
+  /*      05  HEADER-FLAGS        PIC  X(02).                      */
+  /*    03  BACKUP-CATALOG-TABLE.                                  */
+  /*      05  BACKUP-CATALOG-ENTRY     OCCURS 1 TO 28 TIMES        */
+  /*                                   DEPENDING UPON ENTRY-COUNT. */
+  /*        07  DATASET-NAME      PIC  X(44).                      */
+  /*        07  FLAGS             PIC  X(14).                      */
+  /*    03  BACKUP-CATALOG-TRAILER.                                */
+  /*      05  FILLER              PIC  X(08) VALUE LOW-VALUES.     */
+  /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+ 
+  If Left(data.1,4) ¬= 'DBH ' Then Do
+    Say ' ';
+    Say pgm': Tape not created by IDCAMS BACKUP.';
+    Exit 8;
+  End
+ 
+  full_word = Substr(data.1,15,4);
+  Say pgm': Date 1       =' FormatDate(Substr(data.1,9,6));
+  Say pgm':  data 1      =' "x'"C2X(full_word)"'("C2D(full_word)")";
+  full_word = Substr(data.1,25,4);
+  Say pgm': Date 2       =' FormatDate(Substr(data.1,19,6));
+  Say pgm':  data 2      =' "x'"C2X(full_word)"'("C2D(full_word)")";
+ 
+  Say pgm': Catalog recs =' C2D(Substr(data.1,33,4));
+  Say pgm': Dataset cnt. =' C2D(Substr(data.1,37,4));
+  Say pgm': Header leng. = 48';
+  Say pgm': Element len. = 58';
+  Say pgm': Trailer len. = 8';
+ 
+  Do i = 1 to data.0
+    Say ' ';
+    Say 'Record #'C2D(Substr(data.i,41,4))||,
+        ', HLen + (ELen * Cnt) + TLen =' C2D(Substr(data.i,45,2));
+    Say '           Backup Dataset Catalog            Flags          ';
+    Say '-------------------------------------------- ---------------';
+    Say ' ';
+    Do p = 49 to Length(data.i) by 58
+      If Substr(data.i,p,1) == '00'x Then Leave;
+      Say Substr(data.i,p,44) "x'"C2X(Substr(data.i,p+44,6))"'";
+    End p
+  End i
+ 
+/* ----------------------------------------------------------------- */
+/* Processing complete                                               */
+/* ----------------------------------------------------------------- */
+ 
+  Call DittoCommand('$RUN INPUT='cuu);
+ 
+Exit rc;
+ 
+/* ----------------------------------------------------------------- */
+/* Internal subroutines and functions                                */
+/* ----------------------------------------------------------------- */
+ 
+DittoCommand:
+  ditto.  = '';                    /* discard previous output  */
+  ditto.0 = 0;
+  Address DITTO Arg(1);            /* Invoke DITTO */
+  If rc ¬= 0 Then Do
+    Say ' Error:' Arg(1) 'rc =' rc;
+    Do i = 1 to ditto.0
+      Say ' Error:' ditto.i;
+    End i
+  End
+Return;
+ 
+FormatDate: Procedure
+  Parse Arg 1 mm 3 dd 5 yyyy;
+Return mm'/'dd'/'yyyy;
+ 
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */

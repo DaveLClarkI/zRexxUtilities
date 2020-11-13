@@ -1,0 +1,582 @@
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* REXX: CACHERPT   Proc Created 02/20/2005   By Dave Clark        */
+/*                  Last Revised 02/24/2005                        */
+/*                                                                 */
+/*      This procedure queries the current,  running VSE system to */
+/* calculate and report  statistics  on  the  effectiveness of the */
+/* currently allocated DASD cache storage in the MP3000 processor. */
+/*                                                                 */
+/*      There is no parameter  information required (except a user */
+/* id), as all relevent information is obtained from the output of */
+/* the following commands:  SIR  (for  report header information), */
+/* VOLUME (to create a list of DASD devices for reporting),  CACHE */
+/* UNIT=cuu,REPORT (for detail  information  about those devices), */
+/* CACHE SUBSYS=cuu,REPORT (for subsystem total information),  and */
+/* CACHE SUBSYS=cuu,STATUS (for cache status information).         */
+/*                                                                 */
+/* // EXEC REXX=CACHERPT,PARM='...'                                */
+/*                                                                 */
+/* Arguments are: <USR=>userid                                     */
+/*                <DETAILS=>{NO|YES}                               */
+/*                <SORTBY=>{CUU|VOL}                               */
+/* Notes:                                                          */
+/* 1) Must be delimited by either commas, spaces, or both.         */
+/* 2) The order is positional -- unless keyword tags specified.    */
+/* 3) You cannot omit a positional argument and position the next. */
+/*                                                                 */
+/* Where: USR=     is an optional keyword tag;                     */
+/*        userid   is the authorizing user id.                     */
+/*        DETAILS= is an optional keyword tag;                     */
+/*        NO       display subsystem statistics only (defaulted    */
+/*                 when the default sort order is also in effect), */
+/*        YES      display device statistics for each volume (this */
+/*                 is forced into effect when the sort order is    */
+/*                 explicitly specified to be by volume id),       */
+/*        SORTBY=  is an optional keyword tag;                     */
+/*        CUU      display report in unit address order (default), */
+/*        VOL      display report in volume id order (note that    */
+/*                 subsystem totals are not reported when the      */
+/*                 reporting device list is sorted by volume --    */
+/*                 unless a subsystem list is provided below).     */
+/*                                                                 */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+ 
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* No warranty is expressed or implied.    Written by Dave L Clark */
+/* Neither the author nor the company is   DAPSCO Information Sys. */
+/* responsible for any loss or damage      3110 Kettering Blvd.    */
+/* resulting from the use of this code.    Dayton, OH  45439       */
+/* Source is provided on an as-is basis.   Phone (937)294-5331     */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+ 
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* Sample JCL:                                                     */
+/*                                                                 */
+/*   * $$ JOB JNM=CACHERPT,DISP=D,CLASS=C                          */
+/*   * $$ LST LST=SYSLST,DISP=D,CLASS=Z                            */
+/*   // JOB    CACHERPT   CREATE REPORT ON DASD CACHE STATISTICS   */
+/*   // LIBDEF *,SEARCH=DAP.PROD,TEMP                              */
+/*   // EXEC   REXX=CACHERPT,PARM='DLC'  /* <=== YOUR INITIALS */  */
+/*   /& EOJ                                                        */
+/*   * $$ EOJ                                                      */
+/*                                                                 */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+ 
+  Parse Source sys env pgm tokens;
+  Numeric Digits 11;
+ 
+                   /* space-delimited list of device types to report */
+  devtyp = '6E';
+                   /* space-delimited list of cache subsystem */
+                   /* reporting addresses -- e.g., first unit */
+                   /* address for each caching controller --  */
+                   /* if empty, default reporting by channel. */
+  subsys = '400 600';
+ 
+/* ----------------------------------------------------------------- */
+/* Get PARM argument                                                 */
+/* ----------------------------------------------------------------- */
+ 
+  rc  = 0;
+  Arg msg;
+ 
+/* ----------------------------------------------------------------- */
+/* Validate PARM arguments                                           */
+/* ----------------------------------------------------------------- */
+ 
+  If msg <> '' & msg <> '?' Then Do
+    Parse Value Space(Translate(msg,' ',',')) With ,
+      uid dtl ord ext 1 'USR=' uid2 . ,
+                      1 'DETAILS=' dtl2 . ,
+                      1 'SORTBY=' ord2 .;
+    If uid2 <> '' Then uid = uid2;     /* if keyword used,... */
+    If dtl2 <> '' Then dtl = dtl2;     /* if keyword used,... */
+    If ord2 <> '' Then ord = ord2;     /* if keyword used,... */
+    If Kword(uid) Then uid = '';       /* positional omitted? */
+    If Kword(dtl) Then dtl = '';       /* positional omitted? */
+    If Kword(ord) Then ord = '';       /* positional omitted? */
+    If dtl <> 'YES' Then dtl = 'NO';   /* use default setting */
+    If ord <> 'VOL' Then ord = 'CUU';  /* use default setting */
+    If ord == 'VOL' Then dtl = 'YES';  /* use default setting */
+    If ext  <> '' Then Do              /* extra values found? */
+      Say ' EXTRA='ext;
+      Say ' Extraneous argument(s) specified.';
+      msg = '';
+      rc = 4;
+    End
+    If uid == '' Then Do
+      Say ' UID='uid',DETAILS='dtl',SORTBY='ord;
+      Say ' Required argument(s) missing.';
+      msg = '';
+      rc = 4;
+    End
+  End
+ 
+  If msg == '' | msg == '?' Then Do
+    Do n = 1 While Left(Sourceline(n),2) = '/*'
+      Say ' 'Sourceline(n);
+    End
+    Exit rc;
+  End
+ 
+/* ----------------------------------------------------------------- */
+/* Begin processing                                                  */
+/* ----------------------------------------------------------------- */
+ 
+  'SETUID' uid;
+  If rc <> 0 Then Do
+    Say ' Error: Invalid user id; rc =' rc
+    Exit 4;
+  End
+ 
+  cnsl  = pgm;
+  mask  = 'FFFFFFFFFFFF0000'X;     /* compare CARTs on first 6 bytes */
+  rsp.  = '';
+ 
+/* ----------------------------------------------------------------- */
+/* Process SIR command output for report header information          */
+/* ----------------------------------------------------------------- */
+ 
+  Call RexxConsole 'CR_SIR', 'SIR';
+ 
+  mode  = 'Native';
+  cpuid = '';
+  vmusr = '';
+ 
+  Do i = 1 To rsp.0
+    If Pos("CPUID",rsp.i) > 0 Then Do
+      Parse Var rsp.i "CPUID" "=" cpuid .;
+      cpuid = Left(cpuid,8);
+    End
+    If Pos("CPUID",rsp.i) > 0,
+    &  Pos("VM",rsp.i) > 0,
+    Then Do
+      mode = 'VM';
+      Iterate;
+    End
+    If mode == 'VM',
+    &  WordPos("USERID",rsp.i) > 0,
+    Then Do
+      Parse Var rsp.i "USERID" "=" vmusr .;
+      Iterate;
+    End
+    If WordPos("PROC-MODE",rsp.i) > 0,
+    &  Pos("LPAR",rsp.i) > 0,
+    Then Do
+      mode = 'LPAR';
+      Iterate;
+    End
+  End
+ 
+/* ----------------------------------------------------------------- */
+/* Process VOLUME command output for list of reporting devices       */
+/* ----------------------------------------------------------------- */
+ 
+  Call RexxConsole 'CR_VOL', 'VOLUME';
+ 
+  dasd.  = "";
+  dasd.0 = 0;
+ 
+  Do i = 1 To rsp.0
+    Parse Var rsp.i . . cuu code type vol .;
+    If Pos(code,devtyp) == 0 Then Iterate;
+    cuu = Right(X2D(cuu),4,'0');  /* save cuu as number for sorting */
+    n = dasd.0 + 1;
+    If ord == 'VOL' Then
+      dasd.n = vol cuu type;
+    Else Do
+      dasd.n = cuu vol type;
+    End
+    dasd.0 = n;
+  End
+ 
+  x = SORTSTEM('DASD.','ZONE 1 11');
+ 
+/* ----------------------------------------------------------------- */
+/* Set up report headers and controls                                */
+/* ----------------------------------------------------------------- */
+ 
+  hdr.   = '';
+  hdr.0  = 0;
+  lmax   = 60;               /* max lines per page */
+  lcnt   = lmax;             /* line counter */
+  pnum   = 0;                /* page counter */
+  rwdt   = 132;              /* report width */
+  rpt.   = '';
+  rpt.0  = 0;
+ 
+  n      = 1;
+  If dtl == 'YES' Then
+    hdr.n = '1'||Center('VSE DASD I/O Cache Analysis',rwdt);
+  Else Do
+    hdr.n = '1'||Center('VSE DASD I/O Cache Summary',rwdt);
+  End
+  hdr.n  = Overlay(pgm' ', hdr.n, 2);
+  hdr.n  = Overlay(' Page:  ###', hdr.n, Length(hdr.n)-10);
+  n      = n + 1;
+  hdr.n  = ' 'Left(IFF(mode='VM','VM: 'vmusr,'Mode: 'mode)' ('cpuid')',,
+                   rwdt);
+  hdr.n  = Overlay(' 'Left(Date('U'), 6)||Left(Date('S'), 4), hdr.n,,
+                  Length(hdr.n)-10);
+  n      = n + 1;
+  hdr.n  = ' '||,
+ '         Requests: ___Search/Read___ __________________Write______'||,
+ '____________ _____Exception_____ __________Data_Transfer_________ ';
+  n      = n + 1;
+  hdr.n  = ' '||,
+ '                  |    From-Cache   |       Thru-Cache      |    D'||,
+ 'ASD-Fast    | Inhibit   Bypass  |      To Cache       | To DASD  |';
+  n      = n + 1;
+  hdr.n  = ' '||,
+ 'CUU Vol.ID Dev.Typ|Rand% Sequ% Avg.%|Rand% Sequ% FastW Avg.%|Rand%'||,
+ ' Sequ% Avg.%| Loading    Cache  |  Random   Sequential|  Random  |';
+  n      = n + 1;
+  hdr.n  = ' '||,
+ '--- ------ ------- ----- ----- ----- ----- ----- ----- ----- -----'||,
+ ' ----- ----- -------- ---------- ---------- ---------- ---------- ';
+  hdr.0  = n;
+ 
+/* ----------------------------------------------------------------- */
+/* Build the report content                                          */
+/* ----------------------------------------------------------------- */
+ 
+  suu = '';        /* control break for subsystem reporting */
+  sub = '';        /* saved subsystem reporting address     */
+ 
+  Do i = 1 to dasd.0
+ 
+    If ord == 'VOL' Then
+      Parse Var dasd.i vol cuu type .;
+    Else Do
+      Parse Var dasd.i cuu vol type .;
+    End
+    cuu = D2X(cuu,3);   /* convert sortable number back to hex cuu */
+ 
+    If ord <> 'VOL' Then Do
+      If suu = '' Then Do
+        suu = cuu;           /* prevent false initial break */
+        sub = cuu;           /* save for first subsystem    */
+      End
+      If Left(suu,1) <> Left(cuu,1),   /* subsys report by channel */
+      |  WordPos(cuu,subsys) > 0,      /* subsys report by list    */
+      Then Do
+        suu = cuu;           /* trigger a control break */
+      End
+      If sub <> suu Then Do
+        Call SubsysReport;
+        sub = suu;           /* next subsystem reporting address */
+      End
+    End
+ 
+    If dtl == 'YES' Then Do
+ 
+/* Process CACHE UNIT=uuu,REPORT command output for detail reporting */
+ 
+      Call RexxConsole 'CR_CUR', 'CACHE UNIT='cuu',REPORT';
+ 
+      norm = 0;
+      Do j = 1 To rsp.0
+        If Pos("1I40I",rsp.j) > 0 Then Iterate;
+        If Length(Strip(SubStr(rsp.j,9,10))) == 0 Then Iterate;
+        Parse Var rsp.j . . txt;
+        Call ParseCacheData;      /* common parsing code */
+      End
+ 
+      Call CalcCacheStats;
+      x=AddLine(Left(cuu,3),,
+                Left(vol,6),,
+                Left(type,7),,
+                Format(n1,3,1),,
+                Format(s1,3,1),,
+                Format(t1,3,1),,
+                Format(n2,3,1),,
+                Format(s2,3,1),,
+                Format(f2,3,1),,
+                Format(t2,3,1),,
+                Format(n3,3,1),,
+                Format(s3,3,1),,
+                Format(t3,3,1),,
+                Format(a5,8,0),,
+                Format(a6,10,0),,
+                Format(a7,10,0),,
+                Format(a8,10,0),,
+                Format(b7,10,0) );
+    End
+  End
+ 
+  If ord <> 'VOL' Then
+    Call SubsysReport;
+  Else Do
+    If Length(subsys) > 0 Then Do
+      dtl  = 'NO';
+      lcnt = lmax;
+      Do i = 1 To Words(subsys)
+         sub = Word(subsys,i);
+         Call SubsysReport;
+      End
+    End
+  End
+ 
+/* ----------------------------------------------------------------- */
+/* Send the report content to POWER                                  */
+/* ----------------------------------------------------------------- */
+ 
+  str = 'JOBNAME '||pgm,
+         'FORMAT ASA',
+          'CLASS Z',         /* --- also available --- */
+         'COPIES 1',         /*   'DESTNODE R009',     */
+           'DISP L',         /*   'DESTUSER '||uid,    */
+           'JSEP 0',         /* ---------------------- */
+       'PRIORITY 3',
+       'USERINFO '||uid,
+           'STEM rpt.'
+  Address POWER 'PUTQE LST' str
+ 
+/* ----------------------------------------------------------------- */
+/* Processing complete                                               */
+/* ----------------------------------------------------------------- */
+ 
+Exit 0;
+ 
+/* ----------------------------------------------------------------- */
+/* The following routine provides common calculation code.           */
+/* ----------------------------------------------------------------- */
+CalcCacheStats:
+  If a1==0 Then n1 = 0; Else n1 = (b1/a1)*100;
+  If c1==0 Then n2 = 0; Else n2 = (d1/c1)*100;
+  If c1==0 Then n3 = 0; Else n3 = (e1/c1)*100;
+ 
+  If a2==0 Then s1 = 0; Else s1 = (b2/a2)*100;
+  If c2==0 Then s2 = 0; Else s2 = (d2/c2)*100;
+  If c2==0 Then s3 = 0; Else s3 = (e2/c2)*100;
+ 
+  If c3==0 Then f2 = 0; Else f2 = (d3/c3)*100;
+ 
+  If a4==0 Then t1 = 0; Else t1 = (b4/a4)*100;
+  If c4==0 Then t2 = 0; Else t2 = (d4/c4)*100;
+  If c4==0 Then t3 = 0; Else t3 = (e4/c4)*100;
+Return;
+ 
+/* ----------------------------------------------------------------- */
+/* The following routine provides common parsing code.               */
+/* ----------------------------------------------------------------- */
+ParseCacheData:
+  txt = Strip(txt);
+  Select
+  When Left(txt, 6) == 'NORMAL'        Then
+    Do
+      norm = norm + 1;
+      If norm = 1 Then
+        Parse Var txt . a1 b1 c1 d1 e1 .;
+      Else Do
+        Parse Var txt . a7 b7 .;
+      End
+    End
+  When Left(txt,10) == 'SEQUENTIAL'    Then
+    Do
+      If norm = 1 Then
+        Parse Var txt . a2 b2 c2 d2 e2 .;
+      Else Do
+        Parse Var txt . a8 .;
+      End
+    End
+  When Left(txt,10) == 'CACHE FAST'    Then
+    Do
+      Parse Var txt . . . a3 b3 c3 d3 .;
+    End
+  When Left(txt, 6) == 'TOTALS'        Then
+    Do
+      Parse Var txt . a4 b4 c4 d4 e4 .;
+    End
+  When Left(txt,13) == 'INHIBIT CACHE' Then
+    Do
+      Parse Var txt . . . a5 .;
+    End
+  When Left(txt,12) == 'BYPASS CACHE'  Then
+    Do
+      Parse Var txt . . a6 .;
+    End
+  Otherwise
+  End
+Return;
+ 
+/* ----------------------------------------------------------------- */
+/* The following routine adds subsystem information to the report.   */
+/* ----------------------------------------------------------------- */
+SubsysReport:
+ 
+  If dtl == 'YES' Then Do
+    x=AddLine(Left(' ',18),,
+              '===== ===== ===== ===== =====',,
+              '===== ===== ===== ===== =====',,
+              '======== ========== ==========',,
+              '========== ==========');
+  End
+ 
+/* Process CACHE SUBSYS=uuu,REPORT command output for summary info.  */
+ 
+  Call RexxConsole 'CR_CSR', 'CACHE SUBSYS='sub',REPORT';
+ 
+  norm = 0;
+  Do k = 1 To rsp.0
+    If Pos("1I40I",rsp.k) > 0 Then Iterate;
+    If Length(Strip(SubStr(rsp.k,9,10))) == 0 Then Iterate;
+    Parse Var rsp.k . . txt;
+    Call ParseCacheData;     /* common parsing code */
+  End
+ 
+  Call CalcCacheStats;
+  x=AddLine(Left(sub,3),,
+            Left(':subsys total:',14),,
+            Format(n1,3,1),,
+            Format(s1,3,1),,
+            Format(t1,3,1),,
+            Format(n2,3,1),,
+            Format(s2,3,1),,
+            Format(f2,3,1),,
+            Format(t2,3,1),,
+            Format(n3,3,1),,
+            Format(s3,3,1),,
+            Format(t3,3,1),,
+            Format(a5,8,0),,
+            Format(a6,10,0),,
+            Format(a7,10,0),,
+            Format(a8,10,0),,
+            Format(b7,10,0) );
+ 
+  x=AddLine(' ');
+ 
+/* Process CACHE SUBSYS=uuu,STATUS command output into the report    */
+ 
+  Call RexxConsole 'CR_CSS', 'CACHE SUBSYS='sub',STATUS';
+ 
+  Do k = 1 To rsp.0
+    If Pos("1I40I",rsp.k) > 0 Then Iterate;
+    Parse Var rsp.k . 9 txt;
+    Parse Var txt . 43 n .;
+    If Length(n) > 0 Then Do
+      txt = Left(txt,42);
+      n = Convert2Radix(Convert2Bytes(n));
+    End
+    x=AddLine(txt,Right(n,6));
+  End
+ 
+/* print a blank line?  ...or, start a new page?                     */
+ 
+  If dtl <> 'YES' Then
+    x=AddLine(' ');
+  Else Do
+    lcnt = lmax;
+  End
+Return;
+ 
+/* ----------------------------------------------------------------- */
+/* Other Miscellaneous Internal Functions                            */
+/* ----------------------------------------------------------------- */
+ 
+AddLine: Procedure Expose rpt. hdr. pnum lmax lcnt;
+                   /* ----- do report headers ----- */
+  If lmax <= lcnt Then Do
+    pnum = pnum + 1;         /* increment page number */
+    Do i = 1 To hdr.0
+      n     = rpt.0 + 1;
+      rpt.n = hdr.i;
+      rpt.0 = n;
+      If Pos('###', rpt.n) > 0 Then Do
+        rpt.n = Overlay(Format(pnum, 3), rpt.n, Pos('###', rpt.n));
+      End
+    End i
+    lcnt = hdr.0;            /* reset line counter */
+  End
+                   /* ----- do report details ----- */
+  n     = rpt.0 + 1;
+  rpt.n = '';
+  Do i = 1 to Arg()
+    rpt.n = rpt.n||' '||Arg(i);
+  End
+  rpt.0 = n;
+  lcnt = lcnt + 1;
+Return n;
+ 
+Convert2Radix: Procedure;
+  Arg b;
+  r = 'B',    /* Bytes      = 2**0  = 1024**0 */
+      'K',    /* Kilobytes  = 2**10 = 1024**1 */
+      'M',    /* Megabytes  = 2**20 = 1024**2 */
+      'G',    /* Gigabytes  = 2**30 = 1024**3 */
+      'T',    /* Terabytes  = 2**40 = 1024**4 */
+      'P',    /* Petabytes  = 2**50 = 1024**5 */
+      'E',    /* Exabytes   = 2**60 = 1024**6 */
+      'Z',    /* Zettabytes = 2**70 = 1024**7 */
+      'Y';    /* Yottabytes = 2**80 = 1024**8 */
+  Do i = 1 to Words(r) Until b < 1024
+    If 1024 <= b Then b = b / 1024;
+  End
+  If i > Words(r) Then i = Words(r);
+Return b||Word(r,i);
+ 
+Convert2Bytes: Procedure;
+  Arg b;
+  If DataType(b,"W") Then b = b'B';    /* default */
+  r = 'B K M G T P E Z Y';
+  t = Translate(Right(b,1));
+  p = WordPos(t,r);
+  If p == 0 Then Do
+    Say ' Error: Unknown radix value =' t 'on:' b
+    Exit 4;
+  End
+  If Length(b) < 2 Then
+    b = 0;
+  Else Do
+    b = Left(b,Length(b)-1);
+  End
+  If DataType(b,"W") Then Nop;
+  Else Do
+    Say ' Error: Invalid numeric data =' b
+    Exit 4;
+  End
+Return (b * (1024 ** (p-1)));
+ 
+Kword: Procedure;
+  Parse Arg v;
+Return (Pos('=',v) > 0);
+ 
+RexxConsole: Procedure Expose cnsl mask rsp.
+  Arg cart,cmd;
+  Address CONSOLE "ACTIVATE NAME" cnsl "PROFILE REXX";
+  If rc <> 0 Then Do
+    Say ' Error: Activating "'cnsl'" console; rc =' rc;
+    Exit 4;
+  End
+  Address CONSOLE "CART" cart;
+  If rc <> 0 Then Do
+    Say ' Error: Setting "'cart'" CART; rc =' rc;
+    Exit 4;
+  End
+  Address CONSOLE cmd;
+  If rc <> 0 Then Do
+    Say ' Error: Issuing "'cmd'" command; rc =' rc;
+    Exit 4;
+  End
+  rc = GETMSG('rsp.','RESP',cart,mask,15);
+  If rc <> 0 & rc <> 5 Then Do
+    Say ' Error: Retrieving "'cmd'" response; rc =' rc;
+    Exit 4;
+  End
+  Address CONSOLE "DEACTIVATE" cnsl;
+  If rc <> 0 Then Do
+    Say ' Error: Deactivating "'cnsl'" console; rc =' rc;
+    Exit 4;
+  End
+Return;
+ 
+/* ----------------------------------------------------------------- */
+/* IF Function whose first argument should be a Boolean value that   */
+/*             determines which of the other two arguments to return */
+/* ----------------------------------------------------------------- */
+IFF: Procedure;
+  Parse Arg ifCond, isTrue, isFalse;
+  If ifCond = (0=0) Then Return isTrue;
+Return isFalse;
+ 
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */

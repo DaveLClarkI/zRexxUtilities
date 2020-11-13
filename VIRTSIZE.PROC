@@ -1,0 +1,1089 @@
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* REXX: VIRTSIZE   Proc Created 11/25/2003   By Dave Clark        */
+/*                  Last Revised 08/19/2007                        */
+/*                                                                 */
+/*      This procedure queries the current,  running VSE system to */
+/* calculate the total  virtual  size  (VSIZE) actually needed and */
+/* then compares  the  calculated  total  with  the current actual */
+/* VSIZE specified.   In addition, a calculation is made to inform */
+/* you of the  actual  number  of  PDS  cylinders required for the */
+/* calculated VSIZE (in 3390-A cylinder format).   This,  too,  is */
+/* compared with the actual PDS allocations in place (if any).     */
+/*                                                                 */
+/*      There is no parameter  information required (except a user */
+/* id), as all relevent information is obtained from the output of */
+/* the following  commands:  SIR  (for  the  IPL  procedure name), */
+/* QUERY DSPACE (for data space and virtual disk information), MAP */
+/* VIRTUAL (for supervisor,  static partition,  and getvis sizes), */
+/* GETVIS SVA (for free  space reporting),  and PDISPLAY DYNC (for */
+/* dynamic partition sizes and count).                             */
+/*                                                                 */
+/* // EXEC REXX=VIRTSIZE,PARM='...'                                */
+/*                                                                 */
+/* Arguments are: <USR=>userid                                     */
+/*                <DETAILS=>{NO|YES}                               */
+/*                <VSIZE=>size                                     */
+/*                <VIO=>size                                       */
+/* Notes:                                                          */
+/* 1) Must be delimited by either commas, spaces, or both.         */
+/* 2) The order is positional -- unless keyword tags specified.    */
+/* 3) You cannot omit a positional argument and position the next. */
+/*                                                                 */
+/* Where: USR=     is an optional keyword tag;                     */
+/*        userid   is the authorizing user id.                     */
+/*        DETAILS= is an optional keyword tag;                     */
+/*        NO       display storage allocation info only (default), */
+/*        YES      display additional analysis of storage usage.   */
+/*        VSIZE=   is an optional keyword tag;                     */
+/*        VIO=     is an optional keyword tag;                     */
+/*        size     is an optional, overriding size specification   */
+/*                   for modelling PDS cylinder requirements.      */
+/*                   You may specify this value in any units you   */
+/*                   like -- i.e., bytes, kilobytes, megabytes,    */
+/*                   gigabytes, or terabytes.  However, you must   */
+/*                   suffix the value with a radix code (the first */
+/*                   letter of the unit of measure) if specifying  */
+/*                   other than kilobytes.  (See example below.)   */
+/*                                                                 */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* No warranty is expressed or implied.    Written by Dave L Clark */
+/* Neither the author nor the company is   DAPSCO Information Sys. */
+/* responsible for any loss or damage      3110 Kettering Blvd.    */
+/* resulting from the use of this code.    Dayton, OH  45439       */
+/* Source is provided on an as-is basis.   Phone (937)294-5331     */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* Sample JCL:                                                     */
+/*                                                                 */
+/*   * $$ JOB JNM=VIRTSIZE,DISP=D,CLASS=C                          */
+/*   * $$ LST LST=SYSLST,DISP=D,CLASS=Z                            */
+/*   // JOB    VIRTSIZE   CALC TOTAL VSE/ESA VIRTUAL STORAGE NEEDS */
+/*   // LIBDEF *,SEARCH=DAP.PROD,TEMP                              */
+/*   // EXEC   REXX=VIRTSIZE,PARM='DLC'  /* <=== YOUR INITIALS */  */
+/*   /& EOJ                                                        */
+/*   * $$ EOJ                                                      */
+/*                                                                 */
+/* Sample JCL for modelling purposes:                              */
+/*                                                                 */
+/*   * $$ JOB JNM=VIRTSIZE,DISP=D,CLASS=C                          */
+/*   * $$ LST LST=SYSLST,DISP=D,CLASS=Z                            */
+/*   // JOB    VIRTSIZE   CALC TOTAL VSE/ESA VIRTUAL STORAGE NEEDS */
+/*   // LIBDEF *,SEARCH=DAP.PROD,TEMP                              */
+/*   // EXEC   REXX=VIRTSIZE,PARM='DLC,VSIZE=1G,VIO=8M'            */
+/*   /& EOJ                                                        */
+/*   * $$ EOJ                                                      */
+/*                                                                 */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+  Parse Source sys env pgm tokens;
+
+  False = (0=1);
+  True  = (1=1);
+
+/* ----------------------------------------------------------------- */
+/* Get PARM argument                                                 */
+/* ----------------------------------------------------------------- */
+
+  rc  = 0
+  Arg msg
+
+/* ----------------------------------------------------------------- */
+/* Validate PARM arguments                                           */
+/* ----------------------------------------------------------------- */
+
+  If msg <> '' & msg <> '?' Then Do
+    Parse Value Space(Translate(msg,' ',',')) With ,
+      uid dtl msz mio ext 1 'USR=' uid2 . ,
+                          1 'DETAILS=' dtl2 . ,
+                          1 'VSIZE=' msz2 . ,
+                          1 'VIO=' mio2 .;
+    If uid2 <> '' Then uid = uid2;     /* if keyword used,... */
+    If dtl2 <> '' Then dtl = dtl2;     /* if keyword used,... */
+    If msz2 <> '' Then msz = msz2;     /* if keyword used,... */
+    If mio2 <> '' Then mio = mio2;     /* if keyword used,... */
+    If Kword(uid) Then uid = '';       /* positional omitted? */
+    If Kword(dtl) Then dtl = '';       /* positional omitted? */
+    If Kword(msz) Then msz = '';       /* positional omitted? */
+    If Kword(mio) Then mio = '';       /* positional omitted? */
+    If dtl <> 'YES' Then dtl = 'NO';   /* use default setting */
+    If ext  <> '' Then Do              /* extra values found? */
+      Say ' EXTRA='ext;
+      Say ' Extraneous argument(s) specified.';
+      msg = '';
+      rc = 4;
+    End
+    If uid == '' Then Do
+      Say ' UID='uid',DETAILS='dtl',VSIZE='msz',VIO='mio;
+      Say ' Required argument(s) missing.';
+      msg = '';
+      rc = 4;
+    End
+  End
+
+  If msg == '' | msg == '?' Then Do
+    Do n = 1 While Left(Sourceline(n),2) = '/*'
+      Say ' 'Sourceline(n);
+    End
+    Exit rc;
+  End
+
+  If msz <> '' Then msz = Convert2K(1,msz);
+  If mio <> '' Then mio = Convert2K(2,mio);
+
+/* ----------------------------------------------------------------- */
+/* Begin processing                                                  */
+/* ----------------------------------------------------------------- */
+
+  'SETUID' uid;
+  If rc <> 0 Then Do
+    Say ' Error: Invalid user id; rc =' rc
+    Exit 4;
+  End
+
+  cnsl  = pgm;
+  mask  = 'FFFFFFFFFFFF0000'X;     /* compare CARTs on first 6 bytes */
+  rsp.  = '';
+
+/* ----------------------------------------------------------------- */
+/* Process SIR command output for IPL procedure member name          */
+/* ----------------------------------------------------------------- */
+
+  Call RexxConsole 'VS_SIR', 'SIR';
+
+  ipl   = '*';
+  mode  = 'Native';
+  cpuid = '';
+  vmusr = '';
+  cpyblk = '';
+
+  Do i = 1 To rsp.0
+    If Pos("CPUID",rsp.i) > 0 Then Do
+      Parse Var rsp.i "CPUID" "=" cpuid .;
+      cpuid = Left(cpuid,8);
+    End
+    If Pos("CPUID",rsp.i) > 0 & Pos("VM",rsp.i) > 0,
+    |  Pos("VM-SYSTEM",rsp.i) > 0 & SubStr(rsp.i,21,12) > ' ',
+    Then Do
+      mode = 'VM';
+    End
+    If mode == 'VM',
+    &  WordPos("USERID",rsp.i) > 0,
+    Then Do
+      Parse Var rsp.i "USERID" "=" vmusr . 'VMCF' .;
+      Iterate;
+    End
+    If Pos("PROC-MODE",rsp.i) > 0 & Pos("LPAR",rsp.i) > 0,
+    |  Pos("PROCESSOR",rsp.i) > 0 & Pos("LPAR",rsp.i) > 0,
+    Then Do
+      mode = 'LPAR';
+    End
+    If mode == 'LPAR',
+    &  Pos("LPAR",rsp.i) > 0,
+    Then Do
+      Parse Var rsp.i "LPAR" "=" vmusr . 'No.' .;
+      Iterate;
+    End
+    If WordPos("IPL-PROC",rsp.i) > 0 Then Do
+      Parse Var rsp.i "IPL-PROC" "=" ipl .;
+      Iterate;
+    End
+    If WordPos("COPY-BLKS",rsp.i) > 0 Then Do
+      Parse Var rsp.i "COPY-BLKS" "=" a . . b . . c .;
+      cpyblk = a b c;
+      Iterate;
+    End
+  End
+
+  If ipl == '*' Then Do
+    Say ' Error: IPL procedure name not found.';
+    Exit 4;
+  End
+
+/* ----------------------------------------------------------------- */
+/* Process IPL procedure member                                      */
+/* ----------------------------------------------------------------- */
+
+  ipl = 'IJSYSRS.SYSLIB.'ipl'.PROC';
+  "EXECIO * DISKR" ipl "( OPEN FINIS STEM rsp. )";
+  If rc <> 0 Then Do
+    Say ' Error: Accessing member "'ipl'"; rc = 'rc
+    Exit 4;
+  End
+
+  Parse Value Space(Translate(rsp.1,' ',',')) With ,
+        1 'VSIZE=' vsize . ,
+        1 'VIO=' vio . ,
+        1 'VPOOL=' vpool .
+
+  If vsize = '' Then vsize = 0;
+                Else vsize = Convert2K(3,vsize);
+  If vio   = '' Then vio   = 0;
+                Else vio   = Convert2K(4,vio);
+  If vpool = '' Then vpool = 0;
+                Else vpool = Convert2K(5,vpool);
+
+  ncyl  = 0;
+  ncyll = True;    /* last DPD statement has NCYL specified? */
+  sdsz  = 0;
+  spsz  = 0;
+
+  Do i = 2 To rsp.0
+    Select
+      When Word(rsp.i,1) == "DPD" Then Do
+        Parse Value Space(Translate(rsp.i,' ',',')) With ,
+              1 'UNIT=' cuu . ,
+              1 'VOLID=' vol . ,
+              1 'CYL=' scyl . ,
+              1 'NCYL=' cyl .
+        If DataType(cyl,'W') Then Do
+          ncyll = True;
+          ncyl = ncyl + cyl;
+        End
+        Else Do
+          ncyll = False;
+          ncyl = ncyl + GetLastPDSExtentSize(vol,cuu,scyl);
+        End
+      End
+      When Word(rsp.i,1) == "SYS" Then Do
+        Parse Value Space(Translate(rsp.i,' ',',')) With ,
+              1 'SDSIZE=' sd . ,
+              1 'SPSIZE=' sp .
+        If sd <> '' Then sdsz = Convert2K(6,sd);
+        If sp <> '' Then spsz = Convert2K(7,sp);
+      End
+      Otherwise
+    End
+  End
+
+/* ----------------------------------------------------------------- */
+/* Process QUERY DSPACE command output                               */
+/* ----------------------------------------------------------------- */
+
+  Call RexxConsole 'VS_QDS', 'QUERY DSPACE';
+
+  dspc = 0;
+
+  Do i = 1 To rsp.0
+    If WordPos("DEFINED:",rsp.i) > 0 Then Do
+      Parse Var rsp.i "DEFINED:" dspc .
+      dspc = Convert2K(8,dspc);
+      Leave
+    End
+  End
+
+/* ----------------------------------------------------------------- */
+/* Process QUERY DSPACE,ALL command output                           */
+/* ----------------------------------------------------------------- */
+
+  Call RexxConsole 'VS_QDA', 'QUERY DSPACE,ALL';
+
+  vdsk = 0;
+  dspc.  = "";
+  dspc.0 = 0;
+  dspc_use = 0;
+  dspc_max = 0;
+
+  Do i = 1 To rsp.0
+    Parse Var rsp.i . . area . 13 name used max scope owner .
+    If owner == 'BG',
+    &  scope == 'COMMON',
+    &  Left(name,5) == 'SYSIV',
+    Then Do
+      vdsk = vdsk + Convert2K(9,max);
+      Iterate;
+    End
+    If area <> 'AREA',
+    &  owner > ' ',
+    Then Do
+      If area == '' & scope == 'COMMON' Then area = owner;
+      If dspc.name = "" Then Do
+        n = dspc.0 + 1;
+        dspc.n = area name Convert2K(10,used) Convert2K(11,max);
+        dspc.0 = n
+        dspc.name = n;
+      End
+      Else Do
+        n = dspc.name;
+        If Left(name,3) = 'IST' Then Do
+          If owner <> area Then Do
+            dspc.n = area name Convert2K(12,used) Convert2K(13,max);
+          End
+        End
+        Else Do
+          If owner == area Then Do
+            dspc.n = area name Convert2K(14,used) Convert2K(15,max);
+          End
+        End
+      End
+    End
+    If owner > ' ',
+    & (owner == area,
+    |  scope == 'COMMON'),
+    Then Do
+      dspc_use = dspc_use + Convert2K(16,used);
+      dspc_max = dspc_max + Convert2K(17,max);
+    End
+  End
+  x = SORTSTEM('DSPC.','ZONE 1 10');
+
+/* ----------------------------------------------------------------- */
+/* Process MAP command output                                        */
+/* ----------------------------------------------------------------- */
+
+  Call RexxConsole 'VS_MAP', 'MAP VIRTUAL';
+
+  part.  = '';
+  part.0 = 0;
+  pmt    = 0;
+  shr    = 0;
+  supv   = 0;
+  sva_24 = 0;
+  sva_31 = 0;
+
+  Do i = 1 To rsp.0
+    If WordPos("SPACE",rsp.i) > 0 Then Iterate;
+    Parse Var rsp.i . . sid ast . 15 typ . 25 vsz gvs . unu .;
+    Select
+      When typ = 'SUP'    Then
+        supv   = Convert2K(18,vsz) - sdsz;
+      When typ = 'SVA-24' Then
+        Do
+          If unu = '' Then unu  = '0K';
+          sva_24 = Convert2K(19,vsz)||' '||,
+                  (Convert2K(20,gvs) - vpool)||' '||Convert2K(21,unu);
+        End
+      When typ = 'SVA-31' Then
+        sva_31 = Convert2K(22,vsz)||' '||Convert2K(23,gvs);
+      When typ = 'DYN-PA' Then
+        Iterate;
+      When typ = 'DSPACE' Then
+        Iterate;
+      When typ = 'SYSTEM' Then
+        Do
+          pmt  = Convert2K(24,vsz);
+          Leave;
+        End
+      Otherwise
+        If ast <> '*',
+        |  DataType(Left(unu,1),'W') <> True,
+        Then Do
+          unu  = '0K';
+        End
+        If sid = 'S' Then
+          shr  = shr + Convert2K(25,vsz),
+                     + Convert2K(26,gvs),
+                     + Convert2K(27,unu);
+        Else Do
+          n      = part.0 + 1;
+          part.n = Left(typ,2),
+                   Convert2K(28,vsz),
+                   Convert2K(29,gvs),
+                   Convert2K(30,unu);
+          part.0 = n;
+        End
+    End
+  End
+
+/* ----------------------------------------------------------------- */
+/* Process GETVIS SVA command output                                 */
+/* ----------------------------------------------------------------- */
+
+  Call RexxConsole 'VS_SVA', 'GETVIS SVA';
+
+  lblwa = '';
+  sva = 0 0 0 0 0 0;
+
+  Do i = 1 To rsp.0
+    If Pos("AREA SIZE:",rsp.i) > 0 Then Do
+      Parse Var rsp.i . . a ":" b c .;
+      b = Convert2K(31,Space(Translate(b,' ',','),0));
+      c = Convert2K(32,Space(Translate(c,' ',','),0));
+      Parse Var sva_24 vsz gvs unu .;
+      sva_24 = vsz b unu;
+      lblwa = gvs - b;
+      Iterate;
+    End
+    If Pos("USED AREA:",rsp.i) > 0 Then Do
+      Parse Var rsp.i . . a ":" . ":" d e .;
+      d = Convert2K(33,Space(Translate(d,' ',','),0));
+      e = Convert2K(34,Space(Translate(e,' ',','),0));
+      Iterate;
+    End
+    If Pos("FREE AREA:",rsp.i) > 0 Then Do
+      Parse Var rsp.i . . a ":" f g .;
+      f = Convert2K(35,Space(Translate(f,' ',','),0));
+      g = Convert2K(36,Space(Translate(g,' ',','),0));
+      sva = b c (b-d) (c-e) f g;
+      Leave;
+    End
+  End
+
+/* ----------------------------------------------------------------- */
+/* Process LIBR SDL output                                           */
+/* ----------------------------------------------------------------- */
+
+  sdlst = '';
+  sdl_fr = '';
+  vla_24 = '';
+  vla_31 = '';
+
+  sysipt.  = '';
+  sysipt.0 = 1;
+  sysipt.1 = ' LISTDIR SDL ';
+  y = REXXIPT('sysipt.');
+  y = OUTTRAP('syslst.','*','NOCONCAT');
+
+  Address LINK 'LIBR';
+  If rc <> 0 Then Do
+    Say ' Error: Listing SDL; rc = 'rc
+    Exit 4;
+  End
+
+  Do i = 1 to syslst.0
+    If Pos("FREE  ENTRIES :",syslst.i) > 0 Then Do
+      If sdl_fr = '' Then Do
+        Parse Var syslst.i . "FREE  ENTRIES :" sdl_fr .;
+      End
+      Iterate;
+    End
+    If Pos("TOTAL SPACE   :",syslst.i) > 0 Then Do
+      If sdlst = '' Then Do
+        Parse Var syslst.i . "TOTAL SPACE   :" sdlst .;
+        sdlst = Convert2K(37,sdlst);
+        Parse Var sva_24 vsz gvs unu .;
+        sva_24 = sdlst gvs unu;
+        sdlst = vsz - sdlst;
+      End
+      Iterate;
+    End
+    If Pos("FREE  SPACE   :",syslst.i) > 0 Then Do
+      If vla_24 = '' Then Do
+        Parse Var syslst.i . "FREE  SPACE   :" vla_24 .;
+        vla_24 = Convert2K(38,vla_24);
+        Iterate;
+      End
+      Parse Var syslst.i . "FREE  SPACE   :" vla_31 .;
+      vla_31 = Convert2K(39,vla_31);
+      Leave;
+    End
+  End
+
+/* ----------------------------------------------------------------- */
+/* Process "PDISPLAY DYNC" command output                            */
+/* ----------------------------------------------------------------- */
+
+  Call RexxConsole 'VS_DYN', 'PDISPLAY DYNC';
+
+  dyn. = '';
+  dyn.0 = 0;
+
+  Do i = 1 To rsp.0
+    Parse Var rsp.i . . . cls . . max alc .
+    If DataType(max,'W') <> True Then Iterate;
+    n = dyn.0 + 1;
+    dyn.n = cls max Convert2K(40,alc);
+    dyn.0 = n;
+  End
+
+/* ----------------------------------------------------------------- */
+/* Process D A and GETVIS command output for DETAILS=YES selection   */
+/* ----------------------------------------------------------------- */
+
+  dac.  = '';
+  dac.0 = 0;
+
+  If dtl = 'YES' Then Do
+    dac.0 = 1;
+    dac.1 = 'F1';
+    x = OUTTRAP('rsp.','*','NOCONCAT');
+    Address POWER 'PDISPLAY A,PART';
+    Do i = 1 To rsp.0
+      If Pos("COMMAND PASSED",rsp.i) = 0,
+      &  Pos("INACTIVE",rsp.i) = 0,
+      &  Pos("SPOOLED",rsp.i) = 0 Then Do
+        Parse Value Space(Translate(rsp.i,' ',',')) With . pid .;
+        j = dac.0 + 1;
+        dac.j = pid;
+        dac.0 = j;
+      End
+    End
+    x = SORTSTEM('DAC.');
+    Do j = 1 to dac.0
+      Call RexxConsole 'VS_MPX', 'MAP 'dac.j;
+      If Pos("PARTITION:",rsp.1) == 0 Then Do
+        Drop dac.;           /* non-standard output from command */
+        dac.  = '';
+        dac.0 = 0;
+        Leave;
+      End
+      Do i = 1 To rsp.0
+        If Pos("EXEC-SIZE.",rsp.i) > 0 Then Do
+          Parse Var rsp.i "EXEC-SIZE." ":" b .;
+          Iterate;
+        End
+        If Pos("PHASE....:",rsp.i) > 0 Then Do
+          Parse Var rsp.i "PHASE....:" a .;
+          If a = '' | b = '' Then
+            dac.j = '';
+          Else Do
+            b = Convert2K(41,Space(Translate(b,' ',','),0));
+            dac.j = dac.j a b;
+          End
+          Leave;
+        End
+      End
+    End
+    Do j = 1 to dac.0
+      Parse Var dac.j pid pnm psz .;
+      Call RexxConsole 'VS_GVS', 'GETVIS 'pid;
+      Do i = 1 To rsp.0
+        If Pos("AREA SIZE:",rsp.i) > 0 Then Do
+          Parse Var rsp.i . . a ":" b c .;
+          b = Convert2K(42,Space(Translate(b,' ',','),0));
+          c = Convert2K(43,Space(Translate(c,' ',','),0));
+          Iterate;
+        End
+        If Pos("USED AREA:",rsp.i) > 0 Then Do
+          Parse Var rsp.i . . a ":" . ":" d e .;
+          d = Convert2K(44,Space(Translate(d,' ',','),0));
+          e = Convert2K(45,Space(Translate(e,' ',','),0));
+          Iterate;
+        End
+        If Pos("FREE AREA:",rsp.i) > 0 Then Do
+          Parse Var rsp.i . . a ":" f g .;
+          f = Convert2K(46,Space(Translate(f,' ',','),0));
+          g = Convert2K(47,Space(Translate(g,' ',','),0));
+          dac.j = dac.j b c (b-d) (c-e) f g;
+          Leave;
+        End
+      End
+    End
+  End
+
+/* ----------------------------------------------------------------- */
+/* Calculate VSIZE while building the report                         */
+/* ----------------------------------------------------------------- */
+
+  hdr.   = '';
+  hdr.0  = 0;
+  lcnt   = 60;               /* line counter */
+  pnum   = 0;                /* page counter */
+  rpt.   = '';
+  rpt.0  = 0;
+
+                 /* ----- build report headers ----- */
+
+  n      = hdr.0 + 1;
+  If dtl = 'YES' Then
+    hdr.n  = '1'||Center('VSE Virtual Size Analysis',75);
+  Else Do
+    hdr.n  = '1'||Center('VSE Virtual Size Summary',75);
+  End
+  hdr.n  = Overlay(pgm' ', hdr.n, 2);
+  hdr.n  = Overlay(' Page:  ###', hdr.n, Length(hdr.n)-10);
+  n      = n + 1;
+  hdr.n  = ' 'Left(IFF(mode=='VM',,
+                       'VM: 'vmusr,,
+                       'Mode: 'mode vmusr),
+                   '('cpuid')',,
+                75);
+  hdr.n  = Overlay(' 'Left(Date('U'), 6)||Left(Date('S'), 4), hdr.n,,
+                  Length(hdr.n)-10);
+  n      = n + 1;
+  hdr.n  = '          Area Description            K-bytes   M-bytes ',
+                                                ' Total-K   Total-M ';
+  n      = n + 1;
+  hdr.n  = ' ----------------------------------  --------- ---------',
+                                                '--------- ---------';
+  hdr.0  = n;
+
+                 /* ----- 24-bit Shared Storage ----- */
+
+  x=AddLine('Supervisor Size . . . . . . . . . : ',,
+               Format(supv,7,0),' ',,
+               Format(supv/1024,4,2));
+  x=AddLine('SDAIDS Trace Area . . . . . . . . : ',,
+               Format(sdsz,7,0),' ',,
+               Format(sdsz/1024,4,2));
+  x=AddLine('Shared Virtual Area (24-bit):');
+  x=AddLine('  System Directory List . . . . . : ',,
+                 Format(Word(sdlst,1),7,0),' ',,
+                 Format(Word(sdlst,1)/1024,4,2));
+  If dtl = 'YES' Then Do
+    sdl_fs = sdl_fr * 72 / 1024;
+    x=AddLine('    (current SDL entries free='Format(sdl_fr,3,0)' : ',,
+                     Format(sdl_fs,7,0),' ',,
+                     Format(sdl_fs/1024,4,2),')');
+  End
+  x=AddLine('  Virtual Library Area  . . . . . : ',,
+                 Format(Word(sva_24,1),7,0),' ',,
+                 Format(Word(sva_24,1)/1024,4,2));
+  If dtl = 'YES' Then Do
+    x=AddLine('    (current 24-bit VLA remaining : ',,
+                     Format(vla_24,7,0),' ',,
+                     Format(vla_24/1024,4,2),')');
+  End
+  x=AddLine('  System GETVIS Area  . . . . . . : ',,
+                 Format(Word(sva_24,2),7,0),' ',,
+                 Format(Word(sva_24,2)/1024,4,2));
+  If dtl = 'YES' Then Do
+    Parse Var sva a . c . e .;
+    x=AddLine('    (max. 24-bit GETVIS allocable : ',,
+                     Format(a,7,0),' ',,
+                     Format(a/1024,4,2),')');
+    x=AddLine('    (min. 24-bit GETVIS remaining : ',,
+                     Format(c,7,0),' ',,
+                     Format(c/1024,4,2),')');
+    x=AddLine('    (curr. 24-bit GETVIS remaining: ',,
+                     Format(e,7,0),' ',,
+                     Format(e/1024,4,2),')');
+    Parse Var cpyblk a b c .;
+    e = a * 72 / 1024;
+    x=AddLine('    (copy blocks    in-use=' Format(a,5,0) ': ',,
+                     Format(e,7,0),' ',,
+                     Format(e/1024,4,2),')');
+    e = b * 72 / 1024;
+    x=AddLine('    (copy blocks  max-used=' Format(b,5,0) ': ',,
+                     Format(e,7,0),' ',,
+                     Format(e/1024,4,2),')');
+    e = c * 72 / 1024;
+    x=AddLine('    (copy blocks allocated=' Format(c,5,0) ': ',,
+                     Format(e,7,0),' ',,
+                     Format(e/1024,4,2),')');
+  End
+  x=AddLine('  Label Work Area . . . . . . . . : ',,
+                 Format(lblwa,7,0),' ',,
+                 Format(lblwa/1024,4,2));
+  x=AddLine('  Virtual Pool  . . . . . . . . . : ',,
+                 Format(vpool,7,0),' ',,
+                 Format(vpool/1024,4,2));
+  x=AddLine('  Unused Area . . . . . . . . . . : ',,
+                 Format(Word(sva_24,3),7,0),' ',,
+                 Format(Word(sva_24,3)/1024,4,2));
+  x=AddLine('Shared Partition Area . . . . . . : ',,
+               Format(spsz,7,0),' ',,
+               Format(spsz/1024,4,2));
+  If shr > spsz Then Do
+    x=AddLine('  Unused Area . . . . . . . . . . : ',,
+                   Format(shr-spsz,7,0),' ',,
+                   Format((shr-spsz)/1024,4,2));
+    spsz = shr;
+  End
+  x=AddLine(Copies(' ',35),'---------','---------');
+  tot24  = supv + sdsz + sdlst + Word(sva_24,1) + Word(sva_24,2) +,
+           Word(sva_24,3) + lblwa + vpool + spsz;
+  x=AddLine('Total Shared 24-bit Storage . . . :',Copies(' ',20),,
+               Format(tot24,7,0),' ',,
+               Format(tot24/1024,4,2));
+  x=AddLine(Copies('-',34));
+
+                 /* ----- Private Storage ----- */
+
+  If dtl = 'YES' Then lcnt = 60;
+  totps  = 0;
+  Do i = 1 To part.0
+    Parse Var part.i a b c d .;
+    If d > 0 Then
+      x=AddLine(a' Partition  . .(unused:'Format(d,7,0)'K): ',,
+                  Format(b+c,7,0),' ',,
+                  Format((b+c)/1024,4,2));
+    Else Do
+      x=AddLine(a' Partition  . . . . . . . . . . : ',,
+                  Format(b+c,7,0),' ',,
+                  Format((b+c)/1024,4,2));
+    End
+    totps = totps + (b+c+d);
+    If dtl = 'YES' Then Do
+      Do j = 1 to dac.0
+        If Left(dac.j,2) = a Then Do
+          Parse Var dac.j . b c d e f g k l .;
+          x=AddLine('    (phase' Left(b,8) 'execution size: ',,
+                           Format(c,7,0),' ',,
+                           Format(c/1024,4,2),')');
+          x=AddLine('    (max. 24-bit GETVIS allocable : ',,
+                           Format(d,7,0),' ',,
+                           Format(d/1024,4,2),')');
+          x=AddLine('    (min. 24-bit GETVIS remaining : ',,
+                           Format(f,7,0),' ',,
+                           Format(f/1024,4,2),')');
+          x=AddLine('    (curr. 24-bit GETVIS remaining: ',,
+                           Format(k,7,0),' ',,
+                           Format(k/1024,4,2),')');
+          x=AddLine('    (max. 31-bit GETVIS allocable : ',,
+                           Format(e-d,7,0),' ',,
+                           Format((e-d)/1024,4,2),')');
+          If (e-d) > 0 Then Do
+            x=AddLine('    (min. 31-bit GETVIS remaining : ',,
+                             Format(g-f,7,0),' ',,
+                             Format((g-f)/1024,4,2),')');
+            x=AddLine('    (curr. 31-bit GETVIS remaining: ',,
+                             Format(l-k,7,0),' ',,
+                             Format((l-k)/1024,4,2),')');
+          End
+          Leave;
+        End
+      End
+    End
+  End
+  x=AddLine(Copies(' ',35),'---------','---------');
+  x=AddLine('Total Private Storage . . . . . . :',Copies(' ',20),,
+               Format(totps,7,0),' ',,
+               Format(totps/1024,4,2));
+  x=AddLine(Copies('-',34));
+
+                 /* ----- Dynamic Storage ----- */
+
+  If dtl = 'YES' Then lcnt = 60;
+  totds  = 0;
+  Do i = 1 To dyn.0
+    Parse Var dyn.i a b c .;
+    x=AddLine('Class "'a'" Dynamic Partition (x 'Right(b,2,'0')'): ',,
+                 Format(c,7,0),' ',,
+                 Format(c/1024,4,2));
+    totds = totds + (c*b);
+    If dtl = 'YES' Then Do
+      Do j = 1 to dac.0
+        If Left(dac.j,1) = a Then Do
+          Parse Var dac.j p b c d e f g k l .;
+          x=AddLine(' 'p' (phase' Left(b,8) 'execution size: ',,
+                            Format(c,7,0),' ',,
+                            Format(c/1024,4,2),')');
+          x=AddLine('    (max. 24-bit GETVIS allocable : ',,
+                           Format(d,7,0),' ',,
+                           Format(d/1024,4,2),')');
+          x=AddLine('    (min. 24-bit GETVIS remaining : ',,
+                           Format(f,7,0),' ',,
+                           Format(f/1024,4,2),')');
+          x=AddLine('    (curr. 24-bit GETVIS remaining: ',,
+                           Format(k,7,0),' ',,
+                           Format(k/1024,4,2),')');
+          x=AddLine('    (max. 31-bit GETVIS allocable : ',,
+                           Format(e-d,7,0),' ',,
+                          Format((e-d)/1024,4,2),')');
+          If (e-d) > 0 Then Do
+            x=AddLine('    (min. 31-bit GETVIS remaining : ',,
+                             Format(g-f,7,0),' ',,
+                             Format((g-f)/1024,4,2),')');
+            x=AddLine('    (curr. 31-bit GETVIS remaining: ',,
+                             Format(l-k,7,0),' ',,
+                             Format((l-k)/1024,4,2),')');
+          End
+        End
+      End
+    End
+  End
+  x=AddLine(Copies(' ',35),'---------','---------');
+  x=AddLine('Total Dynamic Storage . . . . . . :',Copies(' ',20),,
+               Format(totds,7,0),' ',,
+               Format(totds/1024,4,2));
+  x=AddLine(Copies('-',34));
+
+                 /* ----- 31-bit Shared Storage ----- */
+
+  If dtl = 'YES' Then lcnt = 60;
+  x=AddLine('Shared Virtual Area (31-bit):');
+  x=AddLine('  Virtual Library Area  . . . . . : ',,
+                 Format(Word(sva_31,1),7,0),' ',,
+                 Format(Word(sva_31,1)/1024,4,2));
+  If dtl = 'YES' Then Do
+    x=AddLine('    (current 31-bit VLA remaining : ',,
+                     Format(vla_31,7,0),' ',,
+                     Format(vla_31/1024,4,2),')');
+  End
+  x=AddLine('  System GETVIS Area  . . . . . . : ',,
+                 Format(Word(sva_31,2),7,0),' ',,
+                 Format(Word(sva_31,2)/1024,4,2));
+  If dtl = 'YES' Then Do
+    Parse Var sva a b c d e f .;
+    x=AddLine('    (max. 31-bit GETVIS allocable : ',,
+                     Format(b-a,7,0),' ',,
+                     Format((b-a)/1024,4,2),')');
+    x=AddLine('    (min. 31-bit GETVIS remaining : ',,
+                     Format(d-c,7,0),' ',,
+                     Format((d-c)/1024,4,2),')');
+    x=AddLine('    (curr. 31-bit GETVIS remaining: ',,
+                     Format(f-e,7,0),' ',,
+                     Format((f-e)/1024,4,2),')');
+  End
+  Do 2
+    tot31 = Word(sva_31,1) + Word(sva_31,2) + pmt + (dspc-vdsk) + vdsk;
+    total = tot24 + totps + totds + tot31;
+    If pmt = (Trunc((total/1024)/16+0.99)*16*4) Then Leave;
+    pmt   = Trunc((total/1024)/16+0.99)*16*4;
+  End
+  x=AddLine("Page Management Table (calc'd)  . : ",,
+               Format(pmt,7,0),' ',,
+               Format(pmt/1024,4,2));
+  x=AddLine('Virtual Disk (VDISK) Data Space . : ',,
+               Format(vdsk,7,0),' ',,
+               Format(vdsk/1024,4,2));
+  Select
+    When dspc_max > (dspc - vdsk) Then
+      x=AddLine('Non-VDISK Data Space (in deficit) : ',,
+                   Format(dspc-vdsk,7,0),' ',,
+                   Format((dspc-vdsk)/1024,4,2));
+    When dspc_max < (dspc - vdsk) Then
+      x=AddLine('Non-VDISK Data Space (in surplus) : ',,
+                   Format(dspc-vdsk,7,0),' ',,
+                   Format((dspc-vdsk)/1024,4,2));
+    Otherwise
+      x=AddLine('Non-VDISK Data Space (sufficient) : ',,
+                   Format(dspc-vdsk,7,0),' ',,
+                   Format((dspc-vdsk)/1024,4,2));
+  End
+  If dtl = 'YES' Then Do
+    x=AddLine('  (max currently needed . . . . . : ',,
+                   Format(dspc_max,7,0),' ',,
+                   Format(dspc_max/1024,4,2),')');
+    x=AddLine('  (amount currently "in-use"  . . : ',,
+                   Format(dspc_use,7,0),' ',,
+                   Format(dspc_use/1024,4,2),')');
+    Do i = 1 to dspc.0
+      Parse Var dspc.i area . used max .
+      x=AddLine('    ('area' maximum allocation  . . . : ',,
+                       Format(max,7,0),' ',,
+                       Format(max/1024,4,2),')');
+      x=AddLine('    ('area' currently allocated . . . : ',,
+                       Format(used,7,0),' ',,
+                       Format(used/1024,4,2),')');
+    End
+  End
+  x=AddLine(Copies(' ',35),'---------','---------');
+  x=AddLine('Total Shared 31-bit Storage . . . :',Copies(' ',20),,
+               Format(tot31,7,0),' ',,
+               Format(tot31/1024,4,2));
+  x=AddLine(Copies('-',34));
+
+                 /* ----- Total Virtual Storage ----- */
+
+  x=AddLine(Copies(' ',55),'=========','=========');
+  If dtl = 'YES' Then lcnt = 60;
+  x=AddLine('Total Virtual Storage Required  . :',Copies(' ',20),,
+               Format(total,7,0),' ',,
+               Format(total/1024,4,2));
+
+  txt = 'Current';
+  If msz <> '' Then Do
+    vsize = msz;
+    txt = 'Modeled';
+  End
+
+  If vsize > 0 Then Do
+    Select
+      When total > vsize Then
+        x=AddLine('  'txt' VSIZE is in deficit . . : ',,
+                       Format(vsize,7,0),' ',,
+                       Format(vsize/1024,4,2));
+      When total < vsize Then
+        x=AddLine('  'txt' VSIZE is in surplus . . : ',,
+                       Format(vsize,7,0),' ',,
+                       Format(vsize/1024,4,2));
+      Otherwise
+        x=AddLine('  'txt' VSIZE is sufficient . . : ',,
+                       Format(vsize,7,0),' ',,
+                       Format(vsize/1024,4,2));
+    End
+  End
+
+  txt = 'current';
+  If mio <> '' Then Do
+    vio = mio;
+    txt = 'modeled';
+  End
+
+  If vsize = 0 Then Do
+    x=AddLine('Including 'txt' VIO allocation  :',Copies(' ',20),,
+                 Format(vio,7,0),' ',,
+                 Format(vio/1024,4,2));
+    x=AddLine(Copies(' ',65),'=========');
+    x=AddLine('Minimum VM or Real Storage Needed :',Copies(' ',30),,
+                   Format(Trunc((total+vio)/1024+0.99),4,2));
+  End
+  Else Do
+    x=AddLine('  Including 'txt' VIO allocation: ',,
+                   Format(vio,7,0),' ',,
+                   Format(vio/1024,4,2));
+    If ncyl = 0 Then Do
+      x=AddLine(Copies(' ',45),'=========');
+      x=AddLine('Minimum VM or Real Storage Needed :',Copies(' ',10),,
+                     Format(Trunc((total+vio)/1024+0.99),4,2));
+    End
+    Else Do
+      tcyl   = Trunc(Trunc((vsize+vio)/4+0.99)/180+0.99);
+      x=AddLine('  3390-A PDS cylinder requirements: ',,
+                     Format(tcyl,7,0),'cylinders');
+      If dtl = 'YES' Then Do
+        Select
+          When tcyl > ncyl Then Do
+            If ncyll Then
+              x=AddLine('    (current PDS is in deficit  . : ',,
+                               Format(ncyl,7,0),')');
+            Else Do
+              x=AddLine('    (current PDS may be in deficit: ',,
+                               Format(ncyl,7,0),')');
+            End
+          End
+          When tcyl < ncyl Then Do
+            cap = Trunc(ncyl * 180 * 4 / 1024);
+            x=AddLine('    (current PDS is in surplus  . : ',,
+                             Format(ncyl,7,0),'=',,
+                             Format(cap,4,2),'meg.max',')');
+          End
+          Otherwise
+            x=AddLine('    (current PDS barely sufficient: ',,
+                             Format(ncyl,7,0),')');
+        End
+      End
+    End
+  End
+
+/* ----------------------------------------------------------------- */
+/* Put SYSLST data                                                   */
+/* ----------------------------------------------------------------- */
+
+  "EXECIO * DISKW SYSLST ( OPEN FINIS CC STEM rpt."
+  If rc <> 0 Then Do
+    Say ' Error: EXECIO returned rc =' rc
+    Exit 16
+  End
+
+/* ----------------------------------------------------------------- */
+/* Processing complete                                               */
+/* ----------------------------------------------------------------- */
+
+Exit 0;
+
+/* ----------------------------------------------------------------- */
+/* Internal Functions                                                */
+/* ----------------------------------------------------------------- */
+
+AddLine: Procedure Expose rpt. hdr. pnum lcnt;
+                   /* ----- do report headers ----- */
+  If lcnt = 60 Then Do
+    pnum = pnum + 1;         /* increment page number */
+    Do i = 1 To hdr.0
+      n     = rpt.0 + 1;
+      rpt.n = hdr.i;
+      rpt.0 = n;
+      If Pos('###', rpt.n) > 0 Then Do
+        rpt.n = Overlay(Format(pnum, 3), rpt.n, Pos('###', rpt.n));
+      End
+    End i
+    lcnt = hdr.0;            /* reset line counter */
+  End
+                   /* ----- do report details ----- */
+  n     = rpt.0 + 1;
+  rpt.n = '';
+  Do i = 1 to Arg()
+    rpt.n = rpt.n||' '||Arg(i);
+  End
+  rpt.0 = n;
+  lcnt = lcnt + 1;
+Return n;
+
+Convert2K: Procedure
+  Arg n,k;
+  If DataType(k,"W") Then              /* default */
+    k = Format((k * 1) + .499,,0);
+  Else Do
+    t = Right(k,1);
+    If Length(k) < 2 Then k = 0;
+    Else k = Left(k,Length(k)-1);
+    Select
+      When t=='B' Then k = Format((k / 1024) + .499,,0);
+      When t=='K' Then k = Format((k * 1) + .499,,0);
+      When t=='M' Then k = Format((k * 1024) + .499,,0);
+      When t=='G' Then k = Format((k * 1024 * 1024) + .499,,0);
+      When t=='T' Then k = Format((k * 1024 * 1024 * 1024) + .499,,0);
+      Otherwise
+        Say ' Error: Unknown radix value from call#'n' -' t 'on:' k
+        Exit 4
+    End
+  End
+Return k;
+
+GetLastPDSExtentSize: Procedure
+  Arg vol,cuu,scyl;
+  n = 0;
+  If cuu = '' Then cuu = 'V'vol;
+  If cuu = 'V' Then Return n;
+  Call 'DITSETUP';                 /* set up DITTO environment */
+  Address DITTO '$SET HEADERPG=NO,PRINTLEN=80,PRINTOUT=REXX';
+  If rc <> 0 Then Do
+    Say 'Error: Invoking DITTO internally; rc =' rc;
+    Return n;
+  End
+  ditto.0  = 0;                    /* discard previous output  */
+  Address DITTO '$DVT INPUT='cuu',SORTBY=EXTENT';
+  Do i = 1 to ditto.0
+    If Pos('1...5...10...15',ditto.i) > 0 Then Leave;
+  End i
+  If i > ditto.0 Then Do
+    Say 'Error: No VTOC listing generated.';
+    Do i = 1 to ditto.0
+      Say ditto.i;
+    End i
+  End
+  Else Do
+    i = i + 1;
+    Do i = i to ditto.0
+      Parse Var ditto.i 50 bcyl . ecyl .;
+      If bcyl = scyl Then Do
+        n = ecyl - bcyl + 1;
+        Leave;
+      End
+    End i
+    If i > ditto.0 Then Do
+      Say 'Error: Last Page Dataset extent not found.';
+    End
+  End
+Return n;
+
+Kword: Procedure Expose True False;
+  Parse Arg v;
+  If Pos('=',v) > 0 Then
+    Return True;
+Return False;
+
+RexxConsole: Procedure Expose cnsl mask rsp.
+  Arg cart,cmd;
+  Address CONSOLE "ACTIVATE NAME" cnsl "PROFILE REXX";
+  If rc <> 0 Then Do
+    Say ' Error: Activating "'cnsl'" console; rc =' rc;
+    Exit 4;
+  End
+  Address CONSOLE "CART" cart;
+  If rc <> 0 Then Do
+    Say ' Error: Setting "'cart'" CART; rc =' rc;
+    Exit 4;
+  End
+  Address CONSOLE cmd;
+  If rc <> 0 Then Do
+    Say ' Error: Issuing "'cmd'" command; rc =' rc;
+    Exit 4;
+  End
+  rc = GETMSG('rsp.','RESP',cart,mask,3);
+  If rc <> 0 & rc <> 5 Then Do
+    Say ' Error: Retrieving "'cmd'" response; rc =' rc;
+    Exit 4;
+  End
+  Address CONSOLE "DEACTIVATE" cnsl;
+  If rc <> 0 Then Do
+    Say ' Error: Deactivating "'cnsl'" console; rc =' rc;
+    Exit 4;
+  End
+Return;
+
+/* ----------------------------------------------------------------- */
+/* IF Function whose first argument should be a Boolean value that   */
+/*             determines which of the other two arguments to return */
+/* ----------------------------------------------------------------- */
+IFF: Procedure Expose True False;
+  Parse Arg ifCond, isTrue, isFalse;
+  If ifCond = True Then Return isTrue;
+Return isFalse;
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */

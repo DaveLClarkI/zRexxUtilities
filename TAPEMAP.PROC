@@ -1,0 +1,180 @@
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* REXX: TAPEMAP    Proc Created 01/23/2006   By Dave Clark        */
+/*                  Last Revised 05/03/2011                        */
+/*                                                                 */
+/*      This procedure rewinds  and  then  searches the currently- */
+/* mounted tape volume and maps  out  the standard labels and tape */
+/* marks found with a  count  of  the tape marks.   This is faster */
+/* than using the DITTO TMP function because DITTO reads every bit */
+/* of data on the tape in order to also produce block counts, etc. */
+/* The following is an example of how to execute this procedure:   */
+/*                                                                 */
+/* // EXEC REXX=TAPEMAP,PARM='200,REW'                             */
+/*                                                                 */
+/* Arguments are: <INPUT=>{cuu|SYSnnn}                             */
+/*                <CLOSE=>{REW|RUN}                                */
+/* Notes:                                                          */
+/* 1) Must be delimited by either commas, spaces, or both.         */
+/* 2) The order is positional -- unless keyword tags specified.    */
+/* 3) You cannot omit a positional argument and position the next. */
+/*                                                                 */
+/* Where: < >      encloses optional keywords and/or values;       */
+/*        { }      encloses a required set of keywords or values;  */
+/*         |       separates mutually exclusive values;            */
+/*        INPUT=   is an optional keyword tag;                     */
+/*        cuu      is the control unit and device address of the   */
+/*                   tape drive where the backup is mounted, or    */
+/*        SYSnnn   is the programmer logical unit assigned to the  */
+/*                   tape drive where the backup is mounted.       */
+/*        CLOSE=   is an optional keyword tag;                     */
+/*        REW      will rewind the tape when mapping completes, or */
+/*        RUN      will rewind and unload the tape when mapping is */
+/*                   complete (REW is the default).                */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* No warranty is expressed or implied.    Written by Dave L Clark */
+/* Neither the author nor the company is   WinWholesale Group Svc. */
+/* responsible for any loss or damage      3110 Kettering Blvd.    */
+/* resulting from the use of this code.    Dayton, OH  45439       */
+/* Source is provided on an as-is basis.   Phone (937)294-5331     */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+  Parse Source sys env pgm tokens;
+
+  rc = 0;
+  Arg msg;
+
+/* ----------------------------------------------------------------- */
+/* Validate PARM arguments                                           */
+/* ----------------------------------------------------------------- */
+
+  If msg <> '' & msg <> '?' Then Do
+    Parse Value Space(Translate(msg,' ',',')) With ,
+      inp rew ext 1 'INPUT='  inp2 .,
+                  1 'CLOSE='  rew2 .;
+    If inp2 <> '' Then inp = inp2;
+    If rew2 <> '' Then rew = rew2;
+    If Kword(inp) Then inp = '';       /* positional omitted? */
+    If Kword(rew) Then rew = '';       /* positional omitted? */
+    If rew  == '' Then rew = 'REW';    /* set default option  */
+    If ext  <> '' Then Do
+      Say ' EXTRA='ext;
+      Say ' Extraneous argument(s) specified.';
+      msg = '';
+      rc  = 4;
+    End
+    If inp == '',
+    Then Do
+      Say ' INPUT='inp',CLOSE='rew;
+      Say ' Required argument(s) missing.';
+      msg = '';
+      rc  = 4;
+    End
+    If rew <> 'REW',
+    &  rew <> 'RUN',
+    Then Do
+      Say ' INPUT='inp',CLOSE='rew;
+      Say ' CLOSE argument value is invalid.';
+      msg = '';
+      rc  = 4;
+    End
+  End
+
+  If msg == '' | msg == '?' Then Do
+    Do n = 1 While Left(Sourceline(n),2) = '/*'
+      Say ' 'Sourceline(n);
+    End
+    Exit rc;
+  End
+
+/* ----------------------------------------------------------------- */
+/* Begin processing                                                  */
+/* ----------------------------------------------------------------- */
+
+  Call 'DITSETUP';                 /* set up DITTO environment */
+
+  Call DittoCommand '$SET HEADERPG=NO,PRINTLEN=80,PRINTOUT=REXX';
+  If rc <> 0 Then Exit 10;
+
+  Call DittoCommand '$REW INPUT='inp;
+  If rc <> 0 Then Exit 9;
+
+/* ----------------------------------------------------------------- */
+/* Search tape labels                                                */
+/* ----------------------------------------------------------------- */
+
+  cnt = 0;
+  tapemark = " * * * Tape Mark * * * ";
+
+  Do Until rc <> 0
+
+    Drop data.;                                       /* discard     */
+    data. = '';                                       /* initialize  */
+    data.0 = 0;                                       /* get record  */
+    Call DittoCommand '$TX INPUT='inp',NLRECS=1,VARNAME=data.';
+    If rc = 0 Then Do                                 /* success?    */
+      data.1 = Strip(Left(data.1,68));                /* clean it up */
+      Select
+        When Left(data.1,4) == 'VOL1' Then Say data.1;
+        When Left(data.1,4) == 'HDR1' Then Say data.1;
+        When Left(data.1,4) == 'HDR2' Then z = NextFile(inp);
+        When Left(data.1,4) == 'EOF1' Then Say data.1;
+        When Left(data.1,4) == 'EOF2' Then z = NextFile(inp);
+        When Left(data.1,4) == 'EOV1' Then z = NextFile(inp);
+        Otherwise Do
+          If data.0 > 0 Then Do
+            Say "                       ----- Data File ----- ";
+          End
+          cnt = cnt + 1;
+          Say tapemark cnt;
+          If data.0 = 0 Then Leave;
+          Call DittoCommand '$FSF INPUT='inp;
+        End
+      End
+    End
+
+  End
+
+/* ----------------------------------------------------------------- */
+/* Processing complete                                               */
+/* ----------------------------------------------------------------- */
+
+  If rc = 0 Then
+    Call DittoCommand '$'rew' INPUT='inp;
+  Else Do
+    rc = 8;
+  End
+
+Exit rc;
+
+/* ----------------------------------------------------------------- */
+/* Internal subroutines and functions                                */
+/* ----------------------------------------------------------------- */
+
+DittoCommand:
+  Drop ditto.;                     /* discard previous output  */
+  ditto. = '';                     /* initialize stem base  */
+  ditto.0 = 0;                     /* initialize stem count */
+  Address DITTO Arg(1);            /* Invoke DITTO */
+  If rc <> 0 Then Do
+    Say ' Error: "'Arg(1)'", rc =' rc;
+    Do x = 1 to ditto.0
+      Say ' ' ditto.x;
+    End
+  End
+Return;
+
+NextFile: Procedure Expose tapemark data. ditto. cnt;
+  Arg cuu;
+  Say data.1;
+  cnt = cnt + 1;
+  Say tapemark cnt;
+  Call DittoCommand '$FSF INPUT='cuu;
+Return rc;
+
+Kword: Procedure;
+  Parse Arg v;
+Return (Pos('=',v) > 0);
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */

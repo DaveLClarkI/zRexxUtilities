@@ -1,0 +1,289 @@
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* REXX: VSAMSUMM   Proc Created 02/21/2002   By Dave Clark        */
+/*                  Last Revised 07/22/2003                        */
+/*                                                                 */
+/* This procedure creates a VSAM SPACE usage summary for all       */
+/* user catalogs defined to the VSAM Master Catalog.               */
+/*                                                                 */
+/* // EXEC REXX=VSAMSUMM,PARM='...'                                */
+/*                                                                 */
+/* Arguments are: < USR= > userid                                  */
+/*                                                                 */
+/* Where: USR=     is an optional keyword tag (no space),          */
+/*        userid   is the authorizing user id,                     */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+ 
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* No warranty is expressed or implied.    Written by Dave L Clark */
+/* Neither the author nor the company is   DAPSCO Information Sys. */
+/* responsible for any loss or damage      3110 Kettering Blvd.    */
+/* resulting from the use of this code.    Dayton, OH  45439       */
+/* Source is provided on an as-is basis.   Phone (937)294-5331     */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+ 
+  rc = 0
+  Arg msg
+ 
+  If msg ¬= '' & msg ¬= '?' Then Do
+    Parse Value Space(Translate(msg,' ',',')) With ,
+      uid ext 1 'USR=' uid2 .
+    If uid2 ¬= '' Then uid = uid2
+    If uid == '' | ext ¬= '' Then Do
+      If ext = '' Then ext = '(none)'
+      Say 'Missing or extraneous argument(s) specified:'
+      Say 'UID='uid', EXTRA='ext
+      msg = ''
+      rc = 12
+    End
+  End
+ 
+  If msg == '' | msg == '?' Then Do
+    Do n = 1 While Left(Sourceline(n),2) = '/*'
+      Say Sourceline(n)
+    End
+    Exit rc
+  End
+ 
+  'SETUID' uid
+ 
+/* ----------------------------------------------------------------- */
+/* Collect usercatalog names                                         */
+/* ----------------------------------------------------------------- */
+ 
+  UCT.0 = 1
+  UCT.1 = 'VSAM.MASTER.CATALOG'   /* start with master catalog */
+  UCT.len = Length(UCT.1)    /* length of longest catalog name */
+ 
+  sysipt.0 = 1
+  sysipt.1 = ' LISTCAT USERCATALOG '
+  y = REXXIPT('sysipt.')
+  y = OUTTRAP('syslst.','*','NOCONCAT')
+  Address LINK 'IDCAMS'      /* generate usercatalog listing   */
+  If rc ¬= 0 Then Do
+    Say 'Error: Building usercatalog list; rc =' rc
+    Do i = 1 to syslst.0
+      Say syslst.i
+    End i
+    Exit 16
+  End
+  Do i = 1 to syslst.0
+    If Left(syslst.i,11) == 'USERCATALOG' Then Do
+      Parse Var syslst.i keyw '-' . fnm .
+      j = UCT.0 + 1          /* point to next catalog entry    */
+      UCT.0 = j              /* update stem counter            */
+      UCT.j = fnm            /* store catalog name             */
+      l = Length(UCT.j)      /* get length of catalog name     */
+      If l > UCT.len Then UCT.len = l  /* save largest value   */
+    End
+  End i
+ 
+  UCT.len = UCT.len + (UCT.len//2)     /* make even number */
+  UCT.tot = UCT.len + 32               /* set report width */
+ 
+/* ----------------------------------------------------------------- */
+/* Report storage                                                    */
+/* ----------------------------------------------------------------- */
+ 
+  rpt.0 = 0
+  rpt.pno = 0      /* page number     */
+  rpt.len = 60     /* lines per page  */
+  rpt.cnt = 99     /* line counter    */
+ 
+/* ----------------------------------------------------------------- */
+/* Report headers                                                    */
+/* ----------------------------------------------------------------- */
+ 
+  hdr.0 = 4
+  hdr.1 = '1'||Center('VSAM Space Usage Summary', UCT.tot)
+  hdr.1 = Overlay(' Page ###', hdr.1, Length(hdr.1)-8)
+  hdr.2 = ' '||Left('VSAMSUMM', UCT.tot/2)||,
+               Right(Left(Date('U'),6)||Left(Date('S'),4), UCT.tot/2)
+  hdr.3 = '0'||Left('Catalog Name', UCT.len)||,
+               ' Volume   Alloc    Used    %Full'
+  hdr.4 = ' '||Copies('-', UCT.len)||,
+               ' ------ -------- -------- ------'
+ 
+/* ----------------------------------------------------------------- */
+/* Work fields                                                       */
+/* ----------------------------------------------------------------- */
+ 
+  volcnt = 0
+  alloc1 = 0
+  alloc2 = 0
+  alloc3 = 0
+  used1  = 0
+  used2  = 0
+  used3  = 0
+ 
+/* ----------------------------------------------------------------- */
+/* Loop on all catalogs                                              */
+/* ----------------------------------------------------------------- */
+ 
+  Do i = 1 to UCT.0
+    sysipt.1 = ' LISTCAT SPACE CATALOG('UCT.i') ALL '
+    Address LINK 'IDCAMS'    /* generate SPACE/VOLUME listing  */
+    If rc ¬= 0 Then Do
+      Say 'Error: Catalog='UCT.i'; rc =' rc
+      Do j = 1 to syslst.0
+        Say syslst.j
+      End j
+      Exit 16
+    End
+    Do j = 1 To syslst.0
+      Parse var syslst.j keyw . '-' data
+      Select
+        When keyw == 'VOLUME' |,
+             keyw == 'IDC0001I' Then Do
+          If volcnt ¬= 0 Then Do
+            alloc2 = alloc2 + alloc1   /* summ for level2 */
+            used2 = used2 + used1      /* summ for level2 */
+            If alloc1 > 0 Then
+              full = Format((used1/alloc1)*100,,1)||'%'
+            Else
+              full = '0.0%'
+            If volcnt = 1 Then
+              Call BuildRpt '0'||Left(UCT.i,UCT.len),
+                                 Left(volid,6),
+                                 Format(alloc1,8,0),
+                                 Format(used1,8,0),
+                                 Right(full,6)
+            Else
+              Call BuildRpt ' '||Copies(' ',UCT.len),
+                                 Left(volid,6),
+                                 Format(alloc1,8,0),
+                                 Format(used1,8,0),
+                                 Right(full,6)
+          End
+          volid  = ''
+          If keyw == 'VOLUME' Then Do
+            Parse var data . volid .
+            volcnt = volcnt + 1
+          End
+          alloc1 = 0    /* zero for level1 */
+          used1  = 0    /* zero for level1 */
+        End
+        When keyw == 'BLOCKS' |,
+             keyw == 'TRACKS' Then Do
+          Parse Var data type '-' qty .
+          qty = Strip(qty,'L','-')
+          Select
+            When type == 'TOTAL' Then alloc1 = alloc1 + qty
+            When type == 'USED' Then used1 = used1 + qty
+            Otherwise
+          End
+        End
+        Otherwise
+      End
+    End j
+ 
+/* ----------------------------------------------------------------- */
+/*  Catalog Subtotals                                                */
+/* ----------------------------------------------------------------- */
+ 
+    alloc3 = alloc3 + alloc2   /* summ for level3 */
+    used3 = used3 + used2      /* summ for level3 */
+    If alloc2 > 0 Then
+      full = Format((used2/alloc2)*100,,1)||'%'
+    Else
+      full = '0.0%'
+    If volcnt = 0 Then
+      Call BuildRpt '0'||Copies('=',UCT.len),
+                         '====== ======== ======== ======'
+    Else
+      Call BuildRpt ' '||Copies('=',UCT.len),
+                         '====== ======== ======== ======'
+    Call BuildRpt ' '||Left(UCT.i,UCT.len),
+                       Left('Total:',6),
+                       Format(alloc2,8,0),
+                       Format(used2,8,0),
+                       Right(full,6)
+    volcnt = 0
+    alloc2 = 0     /* zero for level2 */
+    used2  = 0     /* zero for level2 */
+ 
+  End i
+ 
+/* ----------------------------------------------------------------- */
+/*  Grand Totals                                                     */
+/* ----------------------------------------------------------------- */
+ 
+  If alloc3 > 0 Then
+    full = Format((used3/alloc3)*100,,1)||'%'
+  Else
+    full = '0.0%'
+  Call BuildRpt '0'||Copies('=',UCT.len),
+                     '====== ======== ======== ======'
+  Call BuildRpt ' '||Right('Grand',UCT.len),
+                     Left('Total:',6),
+                     Format(alloc3,8,0),
+                     Format(used3,8,0),
+                     Right(full,6)
+ 
+/* ----------------------------------------------------------------- */
+/* Send the report to POWER                                          */
+/* ----------------------------------------------------------------- */
+ 
+  str = 'JOBNAME VSAMSUMM',
+         'FORMAT ASA',
+          'CLASS Z',         /* --- also available --- */
+         'COPIES 1',         /*   'DESTNODE R009',     */
+           'DISP L',         /*   'DESTUSER '||uid,    */
+           'JSEP 0',         /* ---------------------- */
+       'PRIORITY 3',
+       'USERINFO '||uid,
+           'STEM rpt.'
+  Address POWER 'PUTQE LST' str
+ 
+/* ----------------------------------------------------------------- */
+/* Return to caller                                                  */
+/* ----------------------------------------------------------------- */
+ 
+  Exit rc
+ 
+/* ----------------------------------------------------------------- */
+/* Build report                                                      */
+/* ----------------------------------------------------------------- */
+BuildRpt: Procedure Expose hdr. rpt.
+  Parse Arg str
+ 
+  If rpt.cnt >= rpt.len Then Do
+    rpt.pno = rpt.pno + 1         /* increment page number */
+    Do i = 1 To hdr.0
+      pln = hdr.i
+      If Pos('###', pln) > 0 Then Do
+        pln = Overlay(Format(rpt.pno, 3), pln, Pos('###', pln))
+      End
+      Call AddLine pln
+    End i
+  End
+ 
+  Call AddLine str
+ 
+  Return
+ 
+/* ----------------------------------------------------------------- */
+/* Add a line to the report                                          */
+/* ----------------------------------------------------------------- */
+AddLine: Procedure Expose rpt.
+  Parse Arg str
+ 
+  i = rpt.0 + 1         /* point to next report line */
+  rpt.0 = i             /* update stem counter       */
+  rpt.i = str           /* store report print line   */
+ 
+  cc = Left(str, 1)     /* extract control character */
+  Select
+    When cc == '1' Then rpt.cnt = 1
+    When cc == '+' Then rpt.cnt = rpt.cnt + 0
+    When cc == ' ' Then rpt.cnt = rpt.cnt + 1
+    When cc == '0' Then rpt.cnt = rpt.cnt + 2
+    When cc == '-' Then rpt.cnt = rpt.cnt + 3
+    Otherwise Do
+      rpt.cnt = rpt.cnt + 1
+      Say 'Unknown ASA CC = '''cc''''
+    End
+  End
+ 
+  Return
+ 
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */

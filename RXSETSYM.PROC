@@ -1,0 +1,41 @@
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* REXX: RXSETSYM      Proc Created 06/01/2005       By Dave Clark */
+/*                     Last Revised 09/28/2009                     */
+/*                                                                 */
+/*      The purpose of this procedure is to provide the ability to */
+/* obtain the value of a VSE Symbolic Parameter whose full name is */
+/* not directly known,  but is  derived  from the concatenation of */
+/* (for example) a stub literal and another VSE Symbolic Parameter */
+/* whose value supplies the suffix to that stub.  The following is */
+/* an example of same:                                             */
+/*                                                                 */
+/* // SETPARM XAPPLI3='DBDCCICS'                                   */
+/* // SETPARM XPARTCI='I3'                                         */
+/* // SETPARM APPLID=''                                            */
+/* *  APPLID=XAPPL&XPARTCI                                         */
+/* // EXEC   REXX=RXSETSYM,PARM='APPLID=XAPPL&XPARTCI',          X */
+/*                APPLID,XAPPL&XPARTCI                             */
+/* /* EOD */                                                       */
+/* *  APPLID=&APPLID                                               */
+/*                                                                 */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+  Parse Upper Arg p1 '=' p2;
+
+  Call RXVSESYM 'Get',p2;
+  If rc ¬= 0 Then Do
+    Say ' RXVSESYM Get error: rc = 'rc', result = 'result;
+    Exit 8;
+  End
+
+  Interpret p1'='p2;
+
+  Call RXVSESYM 'Set',p1;
+  If rc ¬= 0 Then Do
+    Say ' RXVSESYM Set error: rc = 'rc', result = 'result;
+    Exit 8;
+  End
+
+Exit 0;
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
