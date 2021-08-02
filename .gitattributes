@@ -1,2 +1,3 @@
+*.ASM linguist-language=Assembly
 *.PROC linguist-language=REXX
 *.JCL linguist-language=JCL
