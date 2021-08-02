@@ -1,0 +1,234 @@
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* REXX: RXPAUSES      Proc Created 04/06/2010       By Dave Clark */
+/*                     Last Revised 04/06/2010                     */
+/*                                                                 */
+/*      This procedure  either  releases  or  pauses the specified */
+/* batch partition pause jobs.                                     */
+/*                                                                 */
+/* // EXEC REXX=RXPAUSES,PARM='{Release|Terminate},jobname<,...>'  */
+/*                                                                 */
+/* Notes:                                                          */
+/* 1) Must be delimited by either commas, spaces, or both.         */
+/* 2) The order is positional -- unless keyword tags specified.    */
+/* 3) You cannot omit a positional argument and position the next. */
+/*                                                                 */
+/* Where: < >       encloses optional parameters;                  */
+/*        {|}       encloses mutually exclusive options;           */
+/*        Release                                                  */
+/*        Terminate indicates how to handle the POWER Job Name(s)  */
+/*                    which follow (note that only the first       */
+/*                    letter is required);                         */
+/*        jobname   is one or more POWER Job Name(s) to release    */
+/*                    from the RDR queue or to terminate by reply- */
+/*                    ing to the outstanding console read (note    */
+/*                    that the specified POWER Job Name(s) may end */
+/*                    with an asterisk to include more than one    */
+/*                    job with the same name prefix).              */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* No warranty is expressed or implied.    Written by Dave L Clark */
+/* Neither the author nor the company is   WinWholesale Group Svcs */
+/* responsible for any loss or damage      3110 Kettering Blvd.    */
+/* resulting from the use of this code.    Dayton, OH  45439       */
+/* Source is provided on an as-is basis.   Phone (937)294-5331     */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+  Parse Upper Source sys env pgm tokens;
+
+  False = (0=1);
+  True  = (1=1);
+
+  rc = 0;
+  Arg msg;
+
+/* ----------------------------------------------------------------- */
+/* Validate PARM arguments                                           */
+/* ----------------------------------------------------------------- */
+
+  If msg <> '' & msg <> '?' Then Do
+    Parse Value Space(Translate(msg,' ',',')) With ,
+      opt jobn;
+    If opt <> '' Then opt = Left(opt,1);
+    If (opt <> 'R' & opt <> 'T') | jobn == '' Then Do
+      Say ' Invalid or Missing argument(s):';
+      Say '   OPT='opt',JOBS='jobn;
+      msg = '';
+      rc = 4;
+    End
+  End
+
+  If msg == '' | msg == '?' Then Do
+    Do n = 1 While Left(Sourceline(n),2) = '/*'
+      Say ' 'Sourceline(n);
+    End
+    Exit rc;
+  End
+
+/* ----------------------------------------------------------------- */
+/* Initialize REXX Console variables                                 */
+/* ----------------------------------------------------------------- */
+
+  x = SYSVAR('SYSPOWJNM');       /* get POWER job name               */
+  cnsl  = SYSPOWJNM;             /* name for your console interface  */
+  cart  = '';                    /* CART is for GET-RESP not GET-MSG */
+  mask  = 'FFFFFFFFFFFF0000'X;   /* compare CARTs on first 6 bytes   */
+
+/* ----------------------------------------------------------------- */
+/* Get Current Job Information                                       */
+/* ----------------------------------------------------------------- */
+
+  jdata = Copies(' ', 96);
+  Address LINKPGM "JOBDATA JDATA";
+  mypid = SubStr(jdata, 15, 2);
+
+/* ----------------------------------------------------------------- */
+/* Begin processing                                                  */
+/* ----------------------------------------------------------------- */
+
+  replid = '';
+  Call RexxConsole cart, 'INIT', 'REXNORC';      /* all console msgs */
+
+  Select
+    When opt == 'R' Then Do
+      Do w = 1 to Words(jobn)
+        cmd = 'PRELEASE RDR,'||Word(jobn,w);
+        Say cmd;
+        Call RexxConsole cart, 'PUT', cmd;
+        Do 2
+          Call RexxConsole cart, 'GET', 'MSG';
+          If msgs.0 = 0 Then
+            Leave;
+          Else Do
+            Say msgs.1;
+          End
+        End
+      End
+    End
+
+    When opt == 'T' Then Do c = 1
+      Call RexxConsole cart, 'PUT', 'REPLID';
+      Call RexxConsole cart, 'GET', 'MSG';
+      Parse Var msgs.1 . . . . . rids;
+                             /* collect list of active job names */
+      z = OUTTRAP('lst.','*','NOCONCAT');
+      Address POWER "PDISPLAY A,PART"; /* get active partition jobs */
+      If rc <> 0 Then Do
+        Say pgm': POWER command error; rc =' rc;
+        Do z = 1 to lst.0
+          Say lst.z;
+        End
+        rc = 8;
+        Leave c;
+      End
+      jobs.  = '';                     /* initialize job names array */
+      jobs.0 = 0;
+      Do z = 1 To lst.0
+        If Pos("COMMAND PASSED",lst.z) = 0,
+        &  Pos("INACTIVE",lst.z) = 0,
+        &  Pos("SPOOLED",lst.z) = 0 Then Do
+          Parse Value Space(Translate(lst.z,' ',',')) With ,
+                . pid . . jnm .;       /* extract active job info */
+          If pid <> '',
+          &  pid <> mypid Then Do
+            n = jobs.0 + 1;
+            jobs.n = pid jnm;
+            jobs.0 = n;
+          End
+        End
+      End
+                             /* compare active job list to parm list */
+      Do z = 1 To Words(jobn)          /* loop on parm job names */
+        Do n = 1 To jobs.0             /* loop on active job names */
+          If WildMtch(Word(jobs.n,2),Word(jobn,z),'?*') Then Do
+            pid = Word(jobs.n,1);
+            Do c = 1 To Words(rids)
+              Parse Value Word(rids,c) With p '-' r .;
+              If p == pid Then Do
+                Say p'-'r;
+                Call RexxConsole cart, 'PUT', r' ';
+              End
+            End
+          End
+        End
+      End
+      Leave c;
+    End
+
+    Otherwise;
+  End
+
+  Call RexxConsole cart, 'TERM';
+
+/* ----------------------------------------------------------------- */
+/* Exit procedure                                                    */
+/* ----------------------------------------------------------------- */
+
+Exit rc;
+
+/* ----------------------------------------------------------------- */
+/* Internal Functions and Routines                                   */
+/* ----------------------------------------------------------------- */
+
+RexxConsole: Procedure Expose pgm cnsl mask msgs.,
+                              mdbcpnum  mdbcret  mdbgdom   mdbghold,
+                              mdbgjbnm  mdbgmid  mdbgdstp  mdbgtime,
+                              mdbcpnum. mdbcret. mdbgdom.  mdbghold.,
+                              mdbgjbnm. mdbgmid. mdbgdstp. mdbgtime.;
+  Arg cart, action, data;
+
+  Select
+
+  When action = 'INIT' Then
+    Do
+      Address CONSOLE "ACTIVATE NAME" cnsl "PROFILE" data;
+      If rc <> 0 Then Do
+        Say pgm': Error activating "'cnsl'" console; rc =' rc;
+        Exit 4;
+      End
+      If cart <> '' Then Do
+        Address CONSOLE "CART" cart;
+        If rc <> 0 Then Do
+          Say pgm': Error setting "'cart'" CART; rc =' rc;
+          Exit 4;
+        End
+      End
+    End
+
+  When action = 'PUT'  Then
+    Do
+      Address CONSOLE data;
+      If rc <> 0 Then Do
+        Say pgm': Error issuing "'data'" command; rc =' rc;
+        Exit 4;
+      End
+    End
+
+  When action = 'GET'  Then
+    Do
+      msgs. = '';
+      msgs.0 = 0;
+      If cart = '' Then
+        rc = GETMSG('msgs.',data,,,5);
+      Else Do
+        rc = GETMSG('msgs.',data,cart,mask,5);
+      End
+      If rc <> 0 & rc <> 4 & rc <> 5 Then Do
+        Say pgm': Error retrieving "'data'" response; rc =' rc;
+        Exit 4;
+      End
+    End
+
+  Otherwise
+    Do
+      Address CONSOLE "DEACTIVATE" cnsl;
+      If rc <> 0 Then Do
+        Say pgm': Error deactivating "'cnsl'" console; rc =' rc;
+        Exit 4;
+      End
+    End
+
+  End
+Return;
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
