@@ -1,0 +1,366 @@
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * **/
+/* REXX: RXEDIT        Proc Created 09/01/2022      By Dave Clark */
+/*                     Last Revised 09/02/2022                    */
+/*                                                                */
+/*      This procedure is intended  to  be  run from the console. */
+/* It accepts interactive edit  commands  and input for editing a */
+/* z/VSE library member similar  to  a LIBR UPDATE process.   The */
+/* difference  is  that  this  procedure  is  not  dependent upon */
+/* sequence  numbers  but  uses  an  internal  location  pointer, */
+/* instead.   This location pointer is  indicated by a ruler line */
+/* in the display of source lines  on the console with a variable */
+/* number of verification  lines  displayed  before and after the */
+/* line pointed to by the location pointer.                       */
+/*                                                                */
+/* // EXEC REXX=RXEDIT,PARM='library.sublib.member.type'          */
+/*                                                                */
+/* Note: This is normally,  of course, for those situations where */
+/* the z/VSE system will not come up all the way and all you have */
+/* is the BG partition to work with.  But use it as you will.     */
+/*                                                                */
+/*      The available edit commands are as follows:               */
+/*                                                                */
+/* )Top           Set location pointer to the first line;         */
+/* )Bot           Set location pointer to the last line;          */
+/* )Pos [+|-]nnn  Set location pointer to line nnn or, if signed, */
+/*                  forward or backward by nnn number of lines;   */
+/* )Loc/str/      Set location pointer to where 'str' is found    */
+/*                  (may use backslash as alternate delimiter);   */
+/* )Chg/old/new/* Change first occurrence of 'old' string to    */*/
+/*                  'new' string (where '*' is all occurrences)   */
+/*                  on the single line at the location pointer    */
+/*                  (may use backslash as alternate delimiter;    */
+/*                   and changes are only in columns 1 thru 71);  */
+/* )ADD nnn       Add nnn lines after the location pointer line;  */
+/* )REP nnn       Replace nnn lines starting at location pointer; */
+/* )DEL nnn       Delete nnn lines starting at location pointer;  */
+/* )BEF nnn       Set lines to verify before location pointer;    */
+/* )AFT nnn       Set lines to verify after location pointer;     */
+/* )Save          Save member and exit the RXEDIT session; and,   */
+/* )Quit          Exit the RXEDIT session without saving changes. */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * **/
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* No warranty is expressed or implied.    Written by Dave L Clark */
+/* Neither the author nor the company is   Winsupply Group Srvcs.  */
+/* responsible for any loss or damage      3110 Kettering Blvd.    */
+/* resulting from the use of this code.    Dayton, OH  45439       */
+/* Source is provided on an as-is basis.   Phone (937)294-5331     */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* Note:  The regular system console  allows  up to 131 characters */
+/* of input.   This procedure will truncate that input to a source */
+/* line length of 80 characters.   The FAQS/ASO console,  however, */
+/* only allows up to 72 characters  of input for both the reply id */
+/* and the reply data.  So, to get more than that, use the ASO SET */
+/* command from the FAQS/ASO  console  to  get an extended command */
+/* panel where up to 123  characters  of input will be accepted -- */
+/* with the same truncation by this procedure.                     */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+  Parse Source sys env pgm tokens;
+
+  z = ASSGN('STDIN', 'SYSLOG');
+  z = ASSGN('STDOUT','SYSLOG');
+
+  bef   = 1;       /* number of lines to show before */
+  aft   = 2;       /* number of lines to show after  */
+  cmd = '';
+
+  rc = 0;
+  Arg msg;
+
+/* ----------------------------------------------------------------- */
+/* Validate PARM arguments                                           */
+/* ----------------------------------------------------------------- */
+
+  If msg <> '' & msg <> '?' Then Do
+    mbr = msg;
+    rec.  = '';
+    rec.0 = 0;
+    "EXECIO * DISKR" mbr "( OPEN FINIS STEM rec. )";
+    If rc <> 0 Then Do
+      Say pgm': Read error: "'mbr'"; rc = 'rc
+      Exit 4;
+    End
+  End
+
+  If msg = '' | msg = '?' Then Do
+    Do n = 1 While Left(Sourceline(n),2) = '/*'
+      Say Strip(Sourceline(n),'T');
+    End
+    Exit rc;
+  End
+
+/* ----------------------------------------------------------------- */
+/* Begin processing                                                  */
+/* ----------------------------------------------------------------- */
+
+  i = 1;
+
+  Do Forever
+    Call SendVerify;
+    Parse Upper Pull cmd opt;
+    Select
+      When Left(cmd,2) = ')Q' Then Do            /* QUIT    */
+        Say pgm': )QUIT without saving.';
+        Exit 0;
+      End
+      When Left(cmd,2) = ')S' Then Do            /* SAVE    */
+        Leave;
+      End
+
+      When cmd = ')ADD' Then Do                  /* ADD     */
+        Parse Var opt n .;
+        If ¬Datatype(n,'W') | n <= 0 Then
+          Say pgm': Add number invalid.';
+        Else Do
+          k = i + 1;
+          Do j = rec.0 to k by -1
+            m = j + n;
+            rec.m = rec.j;
+            rec.j = '41'x;
+          End
+          rec.0 = rec.0 + n;
+          i = k;
+          cmd = 'Add';
+          Call GetLines;
+          cmd = ')ADD';
+        End
+      End
+      When cmd = ')REP' Then Do                  /* REPLACE */
+        if i = 0 | i > rec.0 Then
+          Say pgm': Invalid location pointer.';
+        Else Do
+          Parse Var opt n .;
+          If ¬Datatype(n,'W') | n <= 0 Then
+            Say pgm': Replace number invalid.';
+          Else Do
+            cmd = 'Replace';
+            Call GetLines;
+            cmd = ')REP';
+          End
+        End
+      End
+      When cmd = ')DEL' Then Do                  /* DELETE  */
+        if i = 0 | i > rec.0 Then
+          Say pgm': Invalid location pointer.';
+        Else Do
+          Parse Var opt n .;
+          If ¬Datatype(n,'W') | n <= 0 Then
+            Say pgm': Delete number invalid.';
+          Else Do
+            Do j = i to rec.0
+              m = j + n;
+              If m > rec.0 Then
+                rec.j = '';
+              Else Do
+                rec.j = rec.m;
+              End
+            End
+            rec.0 = rec.0 - n;
+            cmd = ')DEL';
+          End
+        End
+      End
+
+      When cmd = ')BEF' Then Do                  /* BEFORE  */
+        Parse Var opt n .;
+        If ¬Datatype(n,'W') | n < 0 Then
+          Say pgm': Before value invalid.';
+        Else Do
+          Say pgm': Before value accepted.';
+          bef = n;
+        End
+        cmd = '';
+      End
+      When cmd = ')AFT' Then Do                  /* AFTER   */
+        Parse Var opt n .;
+        If ¬Datatype(n,'W') | n < 0 Then
+          Say pgm': After value invalid.';
+        Else Do
+          Say pgm': After value accepted.';
+          aft = n;
+        End
+        cmd = '';
+      End
+
+      When Left(cmd,2) = ')T' Then Do            /* TOP     */
+        i = 1;
+        cmd = '';
+      End
+      When Left(cmd,2) = ')B' Then Do            /* BOTTOM  */
+        i = rec.0;
+        cmd = '';
+      End
+
+      When Left(cmd,2) = ')P' Then Do            /* POSITION */
+        Parse Var opt n .;
+        If ¬Datatype(n,'W') Then
+          Say pgm': Position value invalid.';
+        Else Do
+          Say pgm': New position set.';
+          If Left(n,1) = '+' | Left(n,1) = '-' Then
+            i = i + n;
+          Else Do
+            i = 0 + n;
+          End
+          if i < 0     Then i = 0;
+          if i > rec.0 Then i = rec.0;
+          cmd = '';
+        End
+      End
+
+      When Left(cmd,2) = ')L' Then Do            /* LOCATE  */
+        cmd = cmd opt;
+        j = Pos('\',cmd); If j = 0 Then j = Length(cmd) + 1;
+        k = Pos('/',cmd); If k = 0 Then k = Length(cmd) + 1;
+        If j < k Then
+          Parse Var cmd cmd . '\' str '\' .;
+        Else Do
+          Parse Var cmd cmd . '/' str '/' .;
+        End
+        If Length(str) = 0 Then
+          Say pgm': Locate string invalid.';
+        Else Do
+          j = i + 1;
+          Do j = j to rec.0
+            If Pos(str,rec.j) > 0 Then Do
+              Say pgm': Locate string found.';
+              i = j;
+              Leave;
+            End
+          End
+          if j <> i Then Do
+            Say pgm': Locate string not found.';
+          End
+          cmd = '';
+        End
+      End
+
+      When Left(cmd,2) = ')C' Then Do            /* CHANGE  */
+        cmd = cmd opt;
+        j = Pos('\',cmd); If j = 0 Then j = Length(cmd) + 1;
+        k = Pos('/',cmd); If k = 0 Then k = Length(cmd) + 1;
+        If j < k Then
+          Parse Var cmd cmd . '\' old '\' new '\' opt .;
+        Else Do
+          Parse Var cmd cmd . '/' old '/' new '/' opt .;
+        End
+        Select
+        When Length(old) = 0 Then
+          Say pgm': Change old string invalid.';
+        When Length(new) = 0 Then
+          Say pgm': Change new string invalid.';
+        Otherwise
+          str = Left(rec.i,71);
+          p = Pos(old, str);
+          if p = 0 Then
+            Say pgm': Change old string not found.';
+          Else Do
+            Do While p > 0
+              str = Insert(new,DelStr(str,p,Length(old)),p-1);
+              If opt <> '*' Then Leave;
+              s = p + Length(new);
+              p = Pos(old, str, s);
+            End
+            rec.i = Left(str,71)||Substr(rec.i,72);
+            cmd = ')CHG';
+          End
+        End
+      End
+
+      Otherwise                                  /* ERROR   */
+        Say pgm': Unknown command.';
+        cmd = '';
+    End
+  End
+
+/* ----------------------------------------------------------------- */
+/* Save records to library member                                    */
+/* ----------------------------------------------------------------- */
+
+  If rec.0 <= 0 Then
+    Say pgm': Cannot save empty member.';
+  Else Do
+    "EXECIO * DISKW" mbr "( OPEN FINIS STEM rec. )";
+    If rc <> 0 Then
+      Say pgm': Write error: "'mbr'"; rc = 'rc;
+    Else Do
+      Say pgm': )SAVE complete.';
+    End
+  End
+
+/* ----------------------------------------------------------------- */
+/* Exit procedure                                                    */
+/* ----------------------------------------------------------------- */
+
+Exit rc;
+
+/* ----------------------------------------------------------------- */
+/* Internal Functions and Routines                                   */
+/* ----------------------------------------------------------------- */
+
+GetLines:
+  Do m = 1 to n
+    Call SendVerify;
+    Parse Upper Pull str;
+    rec.i = Left(str,80);
+    i = i + 1;
+  End
+  i = i - 1;
+Return 0;
+
+SendVerify:
+  If i <= 0 Then Do
+    Say '----+----1----+----2----+----3----',
+      ||'+----4----+----5----+----6----+---';
+    Say '***** top of member *****';
+    i = 0;
+  End
+  Else Do
+    j = i - bef;
+    If j <= 0 Then Do
+      j = 1;
+      Say '***** top of member *****';
+    End
+    Do j = j to (i - 1)
+      Say Strip(Left(rec.j,68),'T');
+    End
+    Say '----+----1----+----2----+----3----',
+      ||'+----4----+----5----+----6----+---';
+    str = Strip(Left(rec.i,72),'T');
+    If Length(str) <= 68 Then
+      Say str;
+    Else Do
+      Say Left(str,68);
+      Say '                                  ',
+        ||'                              -7--';
+      Say '                                  ',
+        ||'                             ' Substr(str,69);
+    End
+  End
+  j = i + 1;
+  k = i + aft;
+  Do j = j to k
+    If j <= rec.0 Then Do
+      Say Strip(Left(rec.j,68),'T');
+    End
+  End
+  If k > rec.0 Then Do
+    Say '***** end of member *****';
+  End
+  If cmd <= ' ' Then
+    Say pgm': Enter edit command.';
+  Else Do
+    If cmd = 'Add' | cmd = 'Replace' Then
+      Say pgm':' cmd 'line' m 'of' n':';
+    Else Do
+      Say pgm':' cmd 'complete.';
+      cmd = '';
+    End
+  End
+Return 0;
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
