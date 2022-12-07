@@ -1,6 +1,6 @@
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * **/
 /* REXX: RXEDIT        Proc Created 09/01/2022      By Dave Clark */
-/*                     Last Revised 09/02/2022                    */
+/*                     Last Revised 12/07/2022                    */
 /*                                                                */
 /*      This procedure is intended  to  be  run from the console. */
 /* It accepts interactive edit  commands  and input for editing a */
@@ -16,7 +16,11 @@
 /*                                                                */
 /* Note: This is normally,  of course, for those situations where */
 /* the z/VSE system will not come up all the way and all you have */
-/* is the BG partition to work with.  But use it as you will.     */
+/* is the BG partition to work  with -- but,  use it as you will. */
+/* However,  if the system didn't  come  up all the way,  you may */
+/* have to execute the following program before REXX will work.   */
+/*                                                                */
+/* // EXEC PGM=ARXLINK                                            */
 /*                                                                */
 /*      The available edit commands are as follows:               */
 /*                                                                */
@@ -31,7 +35,8 @@
 /*                  on the single line at the location pointer    */
 /*                  (may use backslash as alternate delimiter;    */
 /*                   and changes are only in columns 1 thru 71);  */
-/* )ADD nnn       Add nnn lines after the location pointer line;  */
+/* )ADD nnn       Add nnn lines after the location pointer line   */
+/*                  (use Pos 0 to add lines before first line);   */
 /* )REP nnn       Replace nnn lines starting at location pointer; */
 /* )DEL nnn       Delete nnn lines starting at location pointer;  */
 /* )BEF nnn       Set lines to verify before location pointer;    */
@@ -109,6 +114,13 @@
       End
       When Left(cmd,2) = ')S' Then Do            /* SAVE    */
         Leave;
+      End
+      When Left(cmd,1) = '?'  Then Do            /* HELP    */
+        Say Strip(Sourceline(1),'T');
+        Do n = 27 While Left(Sourceline(n),2) = '/*'
+          Say Strip(Sourceline(n),'T');
+        End
+        cmd = '';
       End
 
       When cmd = ')ADD' Then Do                  /* ADD     */
