@@ -1,0 +1,628 @@
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */           
+/* REXX: VSELCOMP   Proc Created 09/26/2022   By Dave Clark        */           
+/*                  Last Revised 09/30/2022                        */           
+/*                                                                 */           
+/* This procedure represents a two-stage  process to extract a VSE */           
+/* sub-library member list in a primary system and then compare it */           
+/* to the equivalent VSE  sub-library  member  list in a secondary */           
+/* system.   A delta differences  report  is produced (or emailed) */           
+/* identifying members that may be  missing or out of sync between */           
+/* systems.  Four levels of comparison are available.              */           
+/*                                                                 */           
+/* // EXEC REXX=VSELCOMP,PARM='...'                                */           
+/*                                                                 */           
+/* Arguments: <RUNOPT=><{EXTRACT|COMPARE}>                         */           
+/*            <SUBLIB=>lib.sublib                                  */           
+/*            <RPTOPT=><{FULL|MEMBERS|DATES|SIZES}>                */           
+/*            <RPTOUT=><{PRINT|EMAIL}>                             */           
+/*            <MAILTO=><dist</dist</dist>>>                        */           
+/* Notes:                                                          */           
+/* 1) Must be delimited by either commas, spaces, or both.         */           
+/* 2) The order is positional -- unless keyword tags specified.    */           
+/* 3) You cannot omit a positional argument and position the next. */           
+/*                                                                 */           
+/* Where: < >      encloses optional keywords and/or parameters;   */           
+/*        { }      encloses a set of mutually exclusive options;   */           
+/*         |       separates mutually exclusive options;           */           
+/*        RUNOPT=  is an optional keyword tag;                     */           
+/*        EXTRACT  build member list in primary system (default);  */           
+/*        COMPARE  compare to member list in secondary system;     */           
+/*        SUBLIB=  is an optional keyword tag;                     */           
+/*        lib.sublib must be formatted according to the rules for  */           
+/*                   the LIBR LISTDIR SUBLIB= parameter;           */           
+/*        RPTOPT=  is an optional keyword tag;                     */           
+/*        FULL     all member attributes compared (default);       */           
+/*        MEMBERS  only member name/type is compared;              */           
+/*        DATES    members plus created/updated date comparison;   */           
+/*        SIZES    above, plus member bytes/records comparison;    */           
+/*        RPTOUT=  is an optional keyword tag;                     */           
+/*        PRINT    the report output should be printed (default);  */           
+/*        EMAIL    the report output should be emailed;            */           
+/*        MAILTO=  is an optional keyword tag; and,                */           
+/*        dist     is one to three optional distribution group     */           
+/*                   names separated by slashes (default, *DAPMF). */           
+/*                                                                 */           
+/* Note: The DUMP and SYSDEBUG member types are always ignored.    */           
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */           
+                                                                                
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */           
+/* No warranty is expressed or implied.    Written by Dave L Clark */           
+/* Neither the author nor the company is   Winsupply Group Srvcs.  */           
+/* responsible for any loss or damage      3110 Kettering Blvd.    */           
+/* resulting from the use of this code.    Dayton, OH  45439       */           
+/* Source is provided on an as-is basis.   Phone (937)294-5331     */           
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */           
+                                                                                
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */           
+/* The following  sample  JCL  runs  the  extract  and punches the */           
+/* compare as an internal  RDR job.   Thus,  the primary system is */           
+/* taken from the JOB XDEST and the secondary system is taken from */           
+/* the PUN DEST.                                                   */           
+/*                                                                 */           
+/*   * $$ JOB JNM=VSELEXTR,DISP=D,CLASS=0,XDEST=PROD               */           
+/*   * $$ LST LST=SYSLST,DISP=D,CLASS=Z                            */           
+/*   * $$ PUN PUN=SYSPCH,DISP=I,CLASS=0,JNM=VSELCOMP,DEST=QUAS     */           
+/*   // JOB    VSELEXTR   VSE LIBRARY COMPARE ACROSS SYSTEMS       */           
+/*   * $$ SLI  SYSCODE                                             */           
+/*   // EXEC   REXX=VSELCOMP,PARM='EXTRACT,DAP.PROD,FULL,EMAIL'    */           
+/*   /* EOD                                                     */ */           
+/*   /& EOJ                                                        */           
+/*   * $$ EOJ                                                      */           
+/*                                                                 */           
+/* Note:  What SYSCODE does is to extract the 1-letter system code */           
+/* from the CPUVARn procedure and  insert it into the SYSPARM area */           
+/* so that the primary and  secondary systems can be identified in */           
+/* the resulting emailed report.                                   */           
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */           
+                                                                                
+  Parse Source _sys _env _pgm _tokens;                                          
+                                                                                
+  rc = 0;                                                                       
+  Arg msg;                                                                      
+                                                                                
+/* ----------------------------------------------------------------- */         
+/* Validate PARM arguments                                           */         
+/* ----------------------------------------------------------------- */         
+                                                                                
+  If msg <> '' & msg <> '?' Then Do                                             
+    Parse Value Space(Translate(msg,' ',',')) With ,                            
+      runopt sublib rptopt rptout mailto extra 1 'RUNOPT=' runopt2 . ,          
+                                               1 'SUBLIB=' sublib2 . ,          
+                                               1 'RPTOPT=' rptopt2 . ,          
+                                               1 'RPTOUT=' rptout2 . ,          
+                                               1 'MAILTO=' mailto2 .;           
+    If runopt2 <> '' Then runopt = runopt2;                                     
+    If sublib2 <> '' Then sublib = sublib2;                                     
+    If rptopt2 <> '' Then rptopt = rptopt2;                                     
+    If rptout2 <> '' Then rptout = rptout2;                                     
+    If mailto2 <> '' Then mailto = mailto2;                                     
+    If runopt   = '' Then runopt = 'EXTRACT';                                   
+    If rptopt   = '' Then rptopt = 'FULL';                                      
+    If rptout   = '' Then rptout = 'PRINT';                                     
+    If mailto   = '' Then mailto = '*DAPMF';                                    
+    If extra   <> '' Then Do                                                    
+      Say ' Extraneous argument(s) specified:';                                 
+      Say '    EXTRA='extra;                                                    
+      msg = '';                                                                 
+      rc = 12;                                                                  
+    End                                                                         
+    If sublib  = '' Then Do                                                     
+      Say ' Required argument missing:';                                        
+      Say '    SUBLIB='sublib;                                                  
+      msg = '';                                                                 
+      rc = 12;                                                                  
+    End                                                                         
+  End                                                                           
+                                                                                
+  If msg  = '' | msg  = '?' Then Do                                             
+    Do n = 1 While Left(Sourceline(n),2) = '/*'                                 
+      Say Sourceline(n);                                                        
+    End                                                                         
+    Exit rc;                                                                    
+  End                                                                           
+                                                                                
+  sysparm = Copies(' ',8);             /* get the 1-letter system */            
+  Address LINKPGM "SYSPARM sysparm";   /* code from the SYSPARM   */            
+  syscode = Substr(sysparm,1,1);       /* area for identification */            
+                                                                                
+  If runopt = 'COMPARE' Then Signal STAGE2;                                     
+                                                                                
+/* ----------------------------------------------------------------- */         
+/* Extract member list from primary system                           */         
+/* ----------------------------------------------------------------- */         
+STAGE1:                                                                         
+                                                                                
+  Say 'EXTRACT SUBLIB='sublib;                                                  
+                                                                                
+  sysipt.  = '';                                                                
+  sysipt.0 = 1;                                                                 
+  sysipt.1 = ' LISTD  S='sublib;                                                
+                                                                                
+  y = REXXIPT('sysipt.')                                                        
+  y = OUTTRAP('syslst.','*','NOCONCAT')                                         
+  Address LINK 'LIBR'        /* generate member listing        */               
+  If rc <> 0 Then Do                                                            
+    Say ' Error: Building member list; rc =' rc                                 
+    Do i = 1 to syslst.0                                                        
+      Say syslst.i                                                              
+    End i                                                                       
+    Exit 16                                                                     
+  End                                                                           
+                                                                                
+  primary.  = '';                                                               
+  primary.0 = 0;                                                                
+  savlib   = '';                                                                
+                                                                                
+  Do i = 1 to syslst.0                                                          
+    If Left(syslst.i,17) = 'L113I RETURN CODE' Then Do                          
+      savlib = '';                                                              
+      Iterate;                                                                  
+    End                                                                         
+    If Left(syslst.i,17) = '-----------------' Then Iterate                     
+    If Left(syslst.i,17) = 'DIRECTORY DISPLAY' Then Do                          
+      Parse Var syslst.i 'SUBLIBRARY=' savlib .;                                
+      i = i + 5;                                                                
+      Iterate;                                                                  
+    End                                                                         
+    If savlib = '' Then Iterate;                                                
+    Parse Var syslst.i member type created . 28 updated,                        
+                                             36 size code blks .;               
+    If member = '' Then Do                                                      
+      savlib = '';                                                              
+      Iterate;                                                                  
+    End                                                                         
+    If type = 'DUMP' | type = 'SYSDEBUG' Then Do                                
+      Iterate;                                                                  
+    End                                                                         
+    If updated = '  -  -  ' Then Do                                             
+      updated = '';                                                             
+    End                                                                         
+    If primary.0 = 0 Then Do                                                    
+      primary.0 = 6;                                                            
+      primary.1 = "* $$ LST LST=SYSLST,DISP=D,CLASS=Z       ";                  
+      primary.2 = "// JOB    VSELCOMP   VSE LIBRARY COMPARE ";                  
+      primary.3 = "* $$ SLI  SYSCODE                        ";                  
+      primary.4 = "// EXEC   REXX=VSELCOMP,PARM='COMPARE,"sublib",",            
+                                                        ||rptopt",",            
+                                                        ||rptout",";            
+      primary.4 = Left(primary.4,71)"X";                                        
+      If rptout = 'EMAIL' Then                                                  
+        primary.5 = "               "mailto"'";                                 
+      Else Do                                                                   
+        primary.5 = "               '";                                         
+      End                                                                       
+      primary.6 = "SYSCODE="syscode;                                            
+    End                                                                         
+    n = primary.0;                                                              
+    n = n + 1;                                                                  
+    primary.0 = n;                                                              
+    primary.n = Left(member,8),                                                 
+                Left(type,8),                                                   
+                Left(created,8),                                                
+                Left(updated,8),                                                
+                ||Right(size,7),                                                
+                Left(code,2),                                                   
+                Right(blks,6);                                                  
+  End i                                                                         
+                                                                                
+  If primary.0 > 0 Then Do                                                      
+    n = primary.0;                                                              
+    n = n + 1;                                                                  
+    primary.n = "/* EOD";                                                       
+    n = n + 1;                                                                  
+    primary.n = "/& EOJ";                                                       
+    primary.0 = n;                                                              
+    "EXECIO * DISKW SYSPCH ( OPEN FINIS STEM primary.";                         
+  End                                                                           
+                                                                                
+  Signal COMPLETE;                                                              
+                                                                                
+/* ----------------------------------------------------------------- */         
+/* Process SYSIPT data                                               */         
+/* ----------------------------------------------------------------- */         
+STAGE2:                                                                         
+                                                                                
+  Say 'COMPARE SUBLIB='sublib;                                                  
+                                                                                
+  primary.  = '';                                                               
+  primary.0 = 0;                                                                
+                                                                                
+  "EXECIO * DISKR SYSIPT ( OPEN FINIS STEM primary.";                           
+  If rc <> 0 Then Do                                                            
+    Say ' Error: EXECIO returned rc =' rc;                                      
+    Exit 16;                                                                    
+  End                                                                           
+  If primary.0 < 1 | primary.1 = "" Then Do                                     
+    Say ' Error: Nothing to compare.';                                          
+    Exit 12;                                                                    
+  End                                                                           
+  If Substr(primary.1,1,8) <> "SYSCODE=" Then Do                                
+    Say ' Error: Primary system code is missing.';                              
+    Exit 12;                                                                    
+  End                                                                           
+  pricode = Substr(primary.1,9,1);                                              
+                                                                                
+/* ----------------------------------------------------------------- */         
+/* Extract member list from secondary system                         */         
+/* ----------------------------------------------------------------- */         
+                                                                                
+  sysipt.  = '';                                                                
+  sysipt.0 = 1;                                                                 
+  sysipt.1 = ' LISTD  S='sublib;                                                
+                                                                                
+  y = REXXIPT('sysipt.')                                                        
+  y = OUTTRAP('syslst.','*','NOCONCAT')                                         
+  Address LINK 'LIBR'        /* generate member listing        */               
+  If rc <> 0 Then Do                                                            
+    Say ' Error: Building member list; rc =' rc                                 
+    Do i = 1 to syslst.0                                                        
+      Say syslst.i                                                              
+    End i                                                                       
+    Exit 16                                                                     
+  End                                                                           
+                                                                                
+  secndry.  = '';                                                               
+  secndry.0 = 0;                                                                
+  savlib    = '';                                                               
+                                                                                
+  Do i = 1 to syslst.0                                                          
+    If Left(syslst.i,17) = 'L113I RETURN CODE' Then Do                          
+      savlib = '';                                                              
+      Iterate;                                                                  
+    End                                                                         
+    If Left(syslst.i,17) = '-----------------' Then Iterate                     
+    If Left(syslst.i,17) = 'DIRECTORY DISPLAY' Then Do                          
+      Parse Var syslst.i 'SUBLIBRARY=' savlib .;                                
+      i = i + 5;                                                                
+      Iterate;                                                                  
+    End                                                                         
+    If savlib = '' Then Iterate;                                                
+    Parse Var syslst.i member2 type2 created2 . 28 updated2,                    
+                                                36 size2 code2 blks2 .;         
+    If member2 = '' Then Do                                                     
+      savlib = '';                                                              
+      Iterate;                                                                  
+    End                                                                         
+    If type2 = 'DUMP' | type2 = 'SYSDEBUG' Then Do                              
+      Iterate;                                                                  
+    End                                                                         
+    If updated2 = '  -  -  ' Then Do                                            
+      updated2 = '';                                                            
+    End                                                                         
+    n = secndry.0;                                                              
+    n = n + 1;                                                                  
+    secndry.0 = n;                                                              
+    secndry.n = Left(member2,8),                                                
+                Left(type2,8),                                                  
+                Left(created2,8),                                               
+                Left(updated2,8),                                               
+                ||Right(size2,7),                                               
+                Left(code2,2),                                                  
+                Right(blks2,6);                                                 
+  End i                                                                         
+                                                                                
+/* ----------------------------------------------------------------- */         
+/* Process member comparision                                        */         
+/* ----------------------------------------------------------------- */         
+                                                                                
+  title   = 'VSE Library Compare Across Systems';                               
+  count   = 0;                                                                  
+  delta.  = '';                                                                 
+  delta.0 = 0;                                                                  
+  p = 1;                               /* bypass SYSCODE card */                
+  s = 0;                                                                        
+                                                                                
+  Call GetPrimaryMember;                                                        
+  Call GetSecndryMember;                                                        
+                                                                                
+  Do Forever                                                                    
+    Select                                                                      
+/* member name/type comparison ------------------------------------- */         
+      When type < type2 Then                                                    
+        Do                                                                      
+          Call AddPrimaryToReport;                                              
+          Call GetPrimaryMember;                                                
+        End                                                                     
+      When type > type2 Then                                                    
+        Do                                                                      
+          Call AddSecndryToReport;                                              
+          Call GetSecndryMember;                                                
+        End                                                                     
+      When member < member2 Then                                                
+        Do                                                                      
+          Call AddPrimaryToReport;                                              
+          Call GetPrimaryMember;                                                
+        End                                                                     
+      When member > member2 Then                                                
+        Do                                                                      
+          Call AddSecndryToReport;                                              
+          Call GetSecndryMember;                                                
+        End                                                                     
+/* member attributes equal comparison ------------------------------ */         
+      When rptopt  = 'FULL',                                                    
+      &   (updated = updated2,                                                  
+      |    updated = created2,                                                  
+      |    created = updated2),                                                 
+      &    size    = size2,                                                     
+      &    code    = code2,                                                     
+      &    blks    = blks2,                                                     
+      Then Do                                                                   
+          Call GetPrimaryMember;                                                
+          Call GetSecndryMember;                                                
+        End                                                                     
+      When rptopt  = 'SIZES',                                                   
+      &   (updated = updated2,                                                  
+      |    updated = created2,                                                  
+      |    created = updated2),                                                 
+      &    size    = size2,                                                     
+      &    code    = code2,                                                     
+      Then Do                                                                   
+          Call GetPrimaryMember;                                                
+          Call GetSecndryMember;                                                
+        End                                                                     
+      When rptopt  = 'DATES',                                                   
+      &   (updated = updated2,                                                  
+      |    updated = created2,                                                  
+      |    created = updated2),                                                 
+      Then Do                                                                   
+          Call GetPrimaryMember;                                                
+          Call GetSecndryMember;                                                
+        End                                                                     
+/* member attributes not equal comparison -------------------------- */         
+      When rptopt  = 'DATES',                                                   
+      &    created <> created2,                                                 
+      Then Do                                                                   
+          Call AddBothToReport;                                                 
+          Call GetPrimaryMember;                                                
+          Call GetSecndryMember;                                                
+        End                                                                     
+      When rptopt  = 'SIZES',                                                   
+      &   (created <> created2,                                                 
+      |    size    <> size2,                                                    
+      |    code    <> code2),                                                   
+      Then Do                                                                   
+          Call AddBothToReport;                                                 
+          Call GetPrimaryMember;                                                
+          Call GetSecndryMember;                                                
+        End                                                                     
+      When rptopt  = 'FULL',                                                    
+      &   (created <> created2,                                                 
+      |    size    <> size2,                                                    
+      |    code    <> code2,                                                    
+      |    blks    <> blks2),                                                   
+      Then Do                                                                   
+          Call AddBothToReport;                                                 
+          Call GetPrimaryMember;                                                
+          Call GetSecndryMember;                                                
+        End                                                                     
+/* perfect match, nothing to report -------------------------------- */         
+      Otherwise                                                                 
+        Call GetPrimaryMember;                                                  
+        Call GetSecndryMember;                                                  
+    End                                                                         
+    If p > primary.0,                                                           
+    &  s > secndry.0,                                                           
+    Then Do                                                                     
+      Leave;                                                                    
+    End                                                                         
+  End                                                                           
+                                                                                
+  n = ReportFooter();                                                           
+  If n = 0 Then Do                                                              
+    delta.0 = 1;                                                                
+    delta.1 = ' (no delta output for' sublib ') ';                              
+  End                                                                           
+                                                                                
+  If rptout = 'EMAIL' Then                                                      
+    Call MainframeMail;                                                         
+  Else Do                                                                       
+    "EXECIO * DISKW SYSLST ( OPEN FINIS NOCC STEM delta."                       
+    If rc <> 0 Then Do                                                          
+      Say _pgm': Error from EXECIO, rc =' rc;                                   
+      Say ' ';                                                                  
+    End                                                                         
+  End                                                                           
+                                                                                
+/* ----------------------------------------------------------------- */         
+/* Return to caller                                                  */         
+/* ----------------------------------------------------------------- */         
+COMPLETE:                                                                       
+                                                                                
+Exit rc;                                                                        
+                                                                                
+/* ----------------------------------------------------------------- */         
+/* Internal procedures                                               */         
+/* ----------------------------------------------------------------- */         
+AddBothToReport:                                                                
+  n = ReportHeader();                                                           
+  n = n + 1;                                                                    
+  delta.0 = n;                                                                  
+  delta.n = Left(primary.p,52),                                                 
+            '|',                                                                
+            Left(secndry.s,52);                                                 
+  count = count + 1;                                                            
+Return delta.0;                                                                 
+AddPrimaryToReport:                                                             
+  n = ReportHeader();                                                           
+  n = n + 1;                                                                    
+  delta.0 = n;                                                                  
+  delta.n = Left(primary.p,52),                                                 
+            '|';                                                                
+  count = count + 1;                                                            
+Return delta.0;                                                                 
+AddSecndryToReport:                                                             
+  n = ReportHeader();                                                           
+  n = n + 1;                                                                    
+  delta.0 = n;                                                                  
+  delta.n = Copies(' ',52),                                                     
+            '|',                                                                
+            Left(secndry.s,52);                                                 
+  count = count + 1;                                                            
+Return delta.0;                                                                 
+                                                                                
+ReportHeader:                                                                   
+  If delta.0 = 0 Then Do                                                        
+    delta.0  = 11;                                                              
+    delta.1  = 'SUBLIBRARY='sublib;                                             
+    delta.2  = '41'x;                                                           
+    delta.3  = 'Getting listed on this report does not necessarily',            
+               'indicate a problem.  It just means that the';                   
+    delta.4  = 'secondary system is not running the same version',              
+               'of the code as is presently on the primary';                    
+    delta.5  = 'system.  To get an entry off this report you just',             
+               'have to recatalog it in both systems so';                       
+    delta.6  = 'that the dates and member attributes match on',                 
+               'both systems.';                                                 
+    delta.7  = '41'x;                                                           
+    delta.8  = '--------  P R I M A R Y   S Y S T E M (?)  ---------',          
+               '|',                                                             
+               '------  S E C O N D A R Y   S Y S T E M (?)  -------';          
+    delta.8  = ReplStr('?',delta.8,pricode);                                    
+    delta.8  = ReplStr('?',delta.8,syscode);                                    
+    delta.9  = ' M E M B E R      CREATION   LAST     BYTES    LIBR ',          
+               '|',                                                             
+               ' M E M B E R      CREATION   LAST     BYTES    LIBR ';          
+    delta.10 = 'NAME     TYPE     DATE      UPDATE   RECORDS   BLKS ',          
+               '|',                                                             
+               'NAME     TYPE     DATE      UPDATE   RECORDS   BLKS ';          
+    delta.11 = '----------------------------------------------------',          
+               '|',                                                             
+               '----------------------------------------------------';          
+  End                                                                           
+Return delta.0;                                                                 
+ReportFooter:                                                                   
+  If delta.0 > 0 Then Do                                                        
+    n = delta.0;                                                                
+    n = n + 1;                                                                  
+    delta.n = '41'x;                                                            
+    n = n + 1;                                                                  
+    delta.n = 'End of delta report ('count 'entries)';                          
+    delta.0 = n;                                                                
+  End                                                                           
+Return delta.0;                                                                 
+                                                                                
+GetPrimaryMember:                                                               
+  If p <= primary.0 Then p = p + 1;                                             
+  If p <= primary.0 Then                                                        
+    Parse Var primary.p member type created . 28 updated,                       
+                                              36 size code blks .;              
+  Else Do                                                                       
+    member  = 'FF'x;                                                            
+    type    = 'FF'x;                                                            
+  End                                                                           
+Return p;                                                                       
+GetSecndryMember:                                                               
+  If s <= secndry.0 Then s = s + 1;                                             
+  If s <= secndry.0 Then                                                        
+    Parse Var secndry.s member2 type2 created2 . 28 updated2,                   
+                                                 36 size2 code2 blks2 .;        
+  Else Do                                                                       
+    member2  = 'FF'x;                                                           
+    type2    = 'FF'x;                                                           
+  End                                                                           
+Return s;                                                                       
+                                                                                
+MainframeMail:                                                                  
+  y = REXXIPT('OFF');                  /* not using REXX input */               
+  z = SYSVAR(SYSPOWJNM);                                                        
+  SYSPOWJNM  = Strip(SYSPOWJNM);                                                
+                                                                                
+  subject = '('SYSPOWJNM')' title;                                              
+  Parse Value Space(Translate(mailto,' ','/')) With usr1 usr2 usr3 .;           
+                                                                                
+  usr1 = TranslateUser(usr1);                                                   
+  usr2 = TranslateUser(usr2);                                                   
+  usr3 = TranslateUser(usr3);                                                   
+                                                                                
+  mailwrtr = '00000001'x;   /* request one-time initialization */               
+  Address LINKPGM "IGZERRE mailwrtr";      /* of COBOL storage */               
+  If rc <> 0 Then Do                                                            
+    Say _pgm': Error from IGZERRE, rc =' rc;                                    
+    Exit 10;                                                                    
+  End                                                                           
+                                                                                
+/* mainframe mail headers ------------------------------------------ */         
+  mailwrtr = 'H',                                /* head parms   */             
+          || '0000000000000000'x,                /* mail id      */             
+          || '00000C'x,                          /* body seq     */             
+          || Left(usr1,25,' '),                  /* dist group 1 */             
+          || Copies(' ',64),                     /* mail from    */             
+          || Left(subject,64,' '),               /* mail subject */             
+          || Left('Y SY',8,' ');                 /* mail options */             
+  Address LINKPGM "MAILWRTB mailwrtr";                                          
+  If rc <> 0 Then Exit 10;                                                      
+                                                                                
+  If usr2 > ' ' Then Do                                                         
+    mailwrtr = 'D',                              /* dist parms   */             
+            || SubStr(mailwrtr,2,11),            /* inflight     */             
+            || Left(usr2,25,' ');                /* dist group 2 */             
+    Address LINKPGM "MAILWRTB mailwrtr";                                        
+    If rc <> 0 Then Exit 10;                                                    
+  End                                                                           
+                                                                                
+  If usr3 > ' ' Then Do                                                         
+    mailwrtr = 'D',                              /* dist parms   */             
+            || SubStr(mailwrtr,2,11),            /* inflight     */             
+            || Left(usr3,25,' ');                /* dist group 3 */             
+    Address LINKPGM "MAILWRTB mailwrtr";                                        
+    If rc <> 0 Then Exit 10;                                                    
+  End                                                                           
+                                                                                
+/* mainframe mail body --------------------------------------------- */         
+  mailwrtr = 'B',                                /* body parms */               
+          || SubStr(mailwrtr,2,11),              /* inflight   */               
+          || Left('<pre><br>',240,' ');          /* body text  */               
+  Address LINKPGM "MAILWRTB mailwrtr";                                          
+  Do n = 1 to delta.0 While rc == 0                                             
+    mailwrtr = 'B',                              /* body parms */               
+            || SubStr(mailwrtr,2,11),            /* inflight   */               
+            || Left(delta.n'<br>',240,' ');       /* body text  */              
+    Address LINKPGM "MAILWRTB mailwrtr";                                        
+  End n                                                                         
+  If rc == 0 Then Do                                                            
+    mailwrtr = 'B',                              /* body parms */               
+            || SubStr(mailwrtr,2,11),            /* inflight   */               
+            || Left('</pre>',240,' ');           /* body text  */               
+    Address LINKPGM "MAILWRTB mailwrtr";                                        
+  End                                                                           
+  If rc <> 0 Then Do                                                            
+    Say _pgm': Error from LINKPGM, rc =' rc;                                    
+    Say ' ';                                                                    
+    rc = 14;                                                                    
+  End                                                                           
+                                                                                
+/* mainframe mail final -------------------------------------------- */         
+  If rc == 0 Then Do                                                            
+    mailwrtr = 'C',                              /* complete mail */            
+            || SubStr(mailwrtr,2,11),            /* inflight      */            
+            || Copies(' ',161);                  /* blanks        */            
+    Address LINKPGM "MAILWRTB mailwrtr";                                        
+  End                                                                           
+  Else Do                                                                       
+    _rc = rc;                                                                   
+    mailwrtr = 'P',                              /* purge mail */               
+            || SubStr(mailwrtr,2,11),            /* inflight   */               
+            || Copies(' ',161);                  /* blanks     */               
+    Address LINKPGM "MAILWRTB mailwrtr";                                        
+    rc = _rc;                                                                   
+  End                                                                           
+Return rc;                                                                      
+                                                                                
+TranslateUser: Procedure;                                                       
+  Parse Arg _arg_user;                                                          
+  Select                                                                        
+    When _arg_user = '*DAPMF'   Then                                            
+         _arg_user = 'MAINFRAME_PROGRAMMING';                                   
+    When _arg_user = '*INFOSEC' Then                                            
+         _arg_user = 'INFORMATION_SECURITY';                                    
+    When _arg_user = '*NETOPS'  Then                                            
+         _arg_user = 'NETWORK_OPERATIONS';                                      
+    When _arg_user = '*NETSUP'  Then                                            
+         _arg_user = 'NETWORK_SUPPORT';                                         
+    When _arg_user = '*QA'      Then                                            
+         _arg_user = 'QA_HELPDESK';                                             
+    Otherwise                                                                   
+  End                                                                           
+Return _arg_user;                                                               
+                                                                                
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */         
