@@ -1,6 +1,6 @@
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */           
 /* REXX: BSISMTPC   Proc Created 12/12/2007   By Dave Clark        */           
-/*                  Last Revised 07/26/2019                        */           
+/*                  Last Revised 04/17/2023                        */           
 /*                                                                 */           
 /*      This procedure sends an email to an SMTP mail server.  The */           
 /* body content is flagged  with  a TEXT/HTML type.   All input is */           
@@ -85,6 +85,12 @@
 /*        DATA       is a required keyword tag;                    */           
 /*        ...content... represents the body of the email;          */           
 /*        QUIT       is a required keyword tag;                    */           
+/*                                                                 */           
+/* Note that this procedure also generates these mail headers:     */           
+/*   Mime-Version: 1.0;                                            */           
+/*   Content-Type: text/html; charset=UTF8;                        */           
+/*   Content-Transfer-Encoding: 8bit;                              */           
+/*   X-Mailer: Winsupply Socket Mailer;                            */           
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */           
                                                                                 
 /* ----------------------------------------------------------------- */         
@@ -99,15 +105,13 @@
                                                                                 
   rc = ChrCount('S',_pgm);        /* force procedure to compile */              
                                                                                 
-  _False = (0=1);                                                               
-  _True  = (1=1);                                                               
   chunk_size = 8000;                                                            
   eof_cards = _False;                                                           
                                                                                 
-  Debug = 'Silent';    /* Specify 'Verbose', 'Normal', or 'Silent' */           
+  Debug = 'Normal';    /* Specify 'Verbose', 'Normal', or 'Silent' */           
                                                                                 
 /* ----------------------------------------------------------------- */         
-/* Get PARM argument (dummy)                                         */         
+/* Get PARM argument (dummy -- not actually used by this procedure)  */         
 /* ----------------------------------------------------------------- */         
                                                                                 
   rc  = 0;                                                                      
@@ -119,7 +123,7 @@
                                                                                 
   "EXECIO" chunk_size "DISKR SYSIPT ( OPEN STEM card. )";                       
   If rc ¬= 0 Then Do                                                            
-    If rc == 2 Then Do                                                          
+    If rc = 2 Then Do                                                           
       eof_cards = _True;                                                        
     End                                                                         
     Else Do                                                                     
@@ -142,6 +146,8 @@
   MTPsense  = '';                                                               
   MTPsubjct = '';                                                               
                                                                                 
+  MTPverify.  = '';                                                             
+  MTPverify.0 = 0;                                                              
   MTPtoaddr.  = '';                                                             
   MTPtoaddr.0 = 0;                                                              
   MTPccaddr.  = '';                                                             
@@ -152,19 +158,26 @@
   MTPtext.0   = 0;                                                              
                                                                                 
   Do i = 1 To card.0                                                            
-    If Left(card.i,1) == '*' Then Iterate;                                      
+    If Left(card.i,1) = '*' Then Iterate;                                       
     Call Logit 'Input: "'||Strip(card.i,'T')||'"', Debug;                       
     Select                                                                      
-      When Translate(Left(card.i,3)) == 'ID '   Then                            
+      When Translate(Left(card.i,3)) = 'ID '   Then                             
         Parse Var card.i . tcpid .;                                             
-      When Translate(Left(card.i,5)) == 'OPEN ' Then                            
+      When Translate(Left(card.i,5)) = 'OPEN ' Then                             
         Parse Var card.i . MTPserver .;                                         
-      When Translate(Left(card.i,5)) == 'HELO ' Then                            
+      When Translate(Left(card.i,5)) = 'HELO ' Then                             
         Do                                                                      
           Parse Var card.i . MTPsender .;                                       
           MTPsender = ReplVars(MTPsender,'SENDER');                             
         End                                                                     
-      When Translate(Left(card.i,5)) == 'MAIL ' Then                            
+      When Translate(Left(card.i,5)) = 'VRFY ' Then                             
+        Do                                                                      
+          n = MTPverify.0 + 1;                                                  
+          Parse Var card.i . MTPverify.n;                                       
+          MTPverify.n = Strip(MTPverify.n);                                     
+          MTPverify.0 = n;                                                      
+        End                                                                     
+      When Translate(Left(card.i,5)) = 'MAIL ' Then                             
         Do                                                                      
           fullcard = GetContinuedCard();                                        
           Parse Var fullcard . pfx MTPfraddr;                                   
@@ -175,12 +188,12 @@
           End                                                                   
           MTPfraddr = Strip(MTPfraddr);                                         
           MTPfraddr = ReplVars(MTPfraddr,'FRADDR');                             
-          If Pos('@', MTPfraddr) == 0 Then Do                                   
+          If Pos('@', MTPfraddr) = 0 Then Do                                    
             MTPfraddr = MTPfraddr '<no-reply@winsupplyinc.com>';                
           End                                                                   
           Call Logit 'Saved: "FROM:' MTPfraddr||'"', Debug;                     
         End                                                                     
-      When Translate(Left(card.i,5)) == 'ORGA ' Then                            
+      When Translate(Left(card.i,5)) = 'ORGA ' Then                             
         Do                                                                      
           fullcard = GetContinuedCard();                                        
           Parse Var fullcard . pfx MTPfrorga;                                   
@@ -192,7 +205,7 @@
           MTPfrorga = Strip(MTPfrorga);                                         
           Call Logit 'Saved: "ORGA:' MTPfrorga||'"', Debug;                     
         End                                                                     
-      When Translate(Left(card.i,5)) == 'RPTO ' Then                            
+      When Translate(Left(card.i,5)) = 'RPTO ' Then                             
         Do                                                                      
           fullcard = GetContinuedCard();                                        
           Parse Var fullcard . pfx MTPreply2;                                   
@@ -204,10 +217,10 @@
           MTPreply2 = Strip(MTPreply2);                                         
           Call Logit 'Saved: "RPTO:' MTPreply2||'"', Debug;                     
         End                                                                     
-      When Translate(Left(card.i,5)) == 'SENS ' Then                            
+      When Translate(Left(card.i,5)) = 'SENS ' Then                             
         Do                                                                      
           fullcard = GetContinuedCard();                                        
-          Parse Var fullcard . pfx MTPsense;                                    
+          Parse Var fullcard . pfx MTPsense .;                                  
           If Translate(pfx) <> 'SENSITIVITY:' Then Do                           
             Say ' 'fullcard;                                                    
             Say ' Missing ''Sensitivity:'' prefix.'                             
@@ -215,33 +228,33 @@
           End                                                                   
           MTPsense = Strip(MTPsense);                                           
           If WordPos(Translate(MTPSense),,                                      
-                     'PERSONAL PRIVATE,                                         
-                      COMPANY-CONFIDENTIAL') == 0 Then Do                       
+                     'PERSONAL PRIVATE',                                        
+                     'COMPANY-CONFIDENTIAL') = 0 Then Do                        
             Say ' 'fullcard;                                                    
             Say ' Invalid ''Sensitivity:'' option.'                             
             rc = 8;                                                             
           End                                                                   
           Call Logit 'Saved: "SENS:' MTPsense||'"', Debug;                      
         End                                                                     
-      When Translate(Left(card.i,5)) == 'RCPT ' Then                            
+      When Translate(Left(card.i,5)) = 'RCPT ' Then                             
         Do                                                                      
           fullcard = GetContinuedCard();                                        
           Parse Var fullcard . pfx addr;                                        
           addr = Strip(addr);                                                   
           Select                                                                
-            When Translate(pfx) == 'TO:'  Then                                  
+            When Translate(pfx) = 'TO:'  Then                                   
               Do                                                                
                 n = MTPtoaddr.0 + 1;                                            
                 MTPtoaddr.n = addr;                                             
                 MTPtoaddr.0 = n;                                                
               End                                                               
-            When Translate(pfx) == 'CC:'  Then                                  
+            When Translate(pfx) = 'CC:'  Then                                   
               Do                                                                
                 n = MTPccaddr.0 + 1;                                            
                 MTPccaddr.n = addr;                                             
                 MTPccaddr.0 = n;                                                
               End                                                               
-            When Translate(pfx) == 'BCC:' Then                                  
+            When Translate(pfx) = 'BCC:' Then                                   
               Do                                                                
                 n = MTPbccadr.0 + 1;                                            
                 MTPbccadr.n = addr;                                             
@@ -256,7 +269,7 @@
           End                                                                   
           Call Logit 'Saved: "RCPT:' pfx addr||'"', Debug;                      
         End                                                                     
-      When Translate(Left(card.i,5)) == 'SUBJ ' Then                            
+      When Translate(Left(card.i,5)) = 'SUBJ ' Then                             
         Do                                                                      
           fullcard = GetContinuedCard();                                        
           Parse Var fullcard . pfx MTPsubjct;                                   
@@ -268,9 +281,9 @@
           MTPsubjct = Strip(MTPsubjct);                                         
           Call Logit 'Saved: "SUBJ:' MTPsubjct||'"', Debug;                     
         End                                                                     
-      When Translate(Left(card.i,5)) == 'DATA ' Then                            
+      When Translate(Left(card.i,5)) = 'DATA ' Then                             
         Do i = (i+1) To card.0                                                  
-          If Translate(card.i) == 'QUIT' Then Leave;                            
+          If Translate(card.i) = 'QUIT' Then Leave;                             
           n = MTPtext.0 + 1;                                                    
           MTPtext.n = card.i;                                                   
           MTPtext.0 = n;                                                        
@@ -303,19 +316,21 @@
     Say _pgm': No SENDER domain name specified';                                
     rc = 8;                                                                     
   End                                                                           
-  If MTPfraddr = '' Then Do                                                     
-    Say _pgm': No SENDER mail address specified';                               
-    rc = 8;                                                                     
-  End                                                                           
-  If MTPtoaddr.0 = 0,                                                           
-  &  MTPccaddr.0 = 0,                                                           
-  &  MTPbccadr.0 = 0 Then Do                                                    
-    Say _pgm': No RECIPIENT mail address specified';                            
-    rc = 8;                                                                     
-  End                                                                           
-  If MTPtext.0 = 0 Then Do                                                      
-    Say _pgm': No EMAIL text content specified';                                
-    rc = 8;                                                                     
+  If MTPverify.0 = 0 Then Do                                                    
+    If MTPfraddr = '' Then Do                                                   
+      Say _pgm': No SENDER mail address specified';                             
+      rc = 8;                                                                   
+    End                                                                         
+    If MTPtoaddr.0 = 0,                                                         
+    &  MTPccaddr.0 = 0,                                                         
+    &  MTPbccadr.0 = 0 Then Do                                                  
+      Say _pgm': No RECIPIENT mail address specified';                          
+      rc = 8;                                                                   
+    End                                                                         
+    If MTPtext.0 = 0 Then Do                                                    
+      Say _pgm': No EMAIL text content specified';                              
+      rc = 8;                                                                   
+    End                                                                         
   End                                                                           
                                                                                 
   If rc > 0 Then Do                                                             
@@ -327,7 +342,6 @@
     tcpid = '00';                                                               
     Say ' ';                                                                    
   End                                                                           
-  tcpname = 'SOCKET'||Right(tcpid,2,'0');                                       
                                                                                 
 /* ----------------------------------------------------------------- */         
 /* Setup translation tables                                          */         
@@ -371,6 +385,7 @@
 /* Allocate socket                                                   */         
 /* ----------------------------------------------------------------- */         
                                                                                 
+  tcpname = 'SOCKET'||Right(tcpid,2,'0');                                       
   msg = Socket('Initialize', _pgm, 1, tcpname);                                 
   msg = Socket('Socket');                                                       
   Parse Var msg sid .;                                                          
@@ -397,7 +412,7 @@
 /* Send control info                                                 */         
 /* ----------------------------------------------------------------- */         
                                                                                 
-  Say Time() _pgm': Handskaking...';                                            
+  Say Time() _pgm': Handshaking...';                                            
                                                                                 
 /*buffer = 'HELO' MTPsender; */                                                 
   buffer = 'EHLO' MTPsender;                                                    
@@ -405,6 +420,16 @@
   Call SendBuffers sid, buffer||crlf, Debug;                                    
   Call RecvBuffers sid, Debug;                                                  
   If Left(smtp.1,3) >= 400 Then Signal NOGO;                                    
+                                                                                
+  If MTPverify.0 > 0 Then Do                                                    
+    Do n = 1 to MTPverify.0                                                     
+      buffer = 'VRFY' MTPverify.n;                                              
+      Call SendBuffers sid, buffer||crlf, Debug;                                
+      Call RecvBuffers sid, Debug;                                              
+    End                                                                         
+    rc = 0;                                                                     
+    Signal QUIT;                                                                
+  End                                                                           
                                                                                 
   Select                                                                        
     When Pos('<', MTPfraddr) > 0 Then                                           
@@ -479,12 +504,14 @@
   End                                                                           
                                                                                 
   Select                                                                        
-    When MTPtoaddr.0 > 0 Then                                                   
+    When MTPtoaddr.0 > 0 Then Do                                                
+      Call SayAll 'Rcpt:' MTPtoaddr.1;                                          
       Do i = 1 To MTPtoaddr.0                                                   
         If Length(MTPtoaddr.i) > 0 Then Do                                      
           Call SendData 'To:' HandleComma(MTPtoaddr.i)||crlf;                   
         End                                                                     
       End                                                                       
+    End                                                                         
     Otherwise Do                                                                
       If MTPccaddr.0 > 0 Then                                                   
         Call SendData 'To: [see CC list]'||crlf;                                
@@ -500,6 +527,7 @@
     End                                                                         
   End                                                                           
                                                                                 
+  Call SayAll 'Subj:' MTPsubjct;                                                
   Call SendData 'Subject:' MTPsubjct||crlf;                                     
                                                                                 
 /* ----------------------------------------------------------------- */         
@@ -531,7 +559,7 @@
         If eof_cards Then Leave;  /* get out if no more text cards */           
         "EXECIO" chunk_size "DISKR SYSIPT ( STEM MTPtext. )";                   
         If rc ¬= 0 Then Do                                                      
-          If rc == 2 Then Do                                                    
+          If rc = 2 Then Do                                                     
             eof_cards = _True;     /* set flag at end of text cards */          
           End                                                                   
           Else Do                                                               
@@ -539,6 +567,7 @@
             Exit 16;                                                            
           End                                                                   
         End                                                                     
+        rc = 0;                                                                 
         n = 0;                                                                  
       End                                                                       
     End                                                                         
@@ -592,7 +621,7 @@ HALT:
                                                                                 
   Say Time() _pgm': Ended on' Date();                                           
                                                                                 
-  If rc == 0,                                                                   
+  If rc = 0,                                                                    
   &  Translate(Left(Debug,1)) <> 'S' Then Do                                    
     rc = 2;                                                                     
   End                                                                           
@@ -623,8 +652,8 @@ Return Translate(buffer,ebc,asc);
                                                                                 
 Decode64: Procedure Expose B64 ebc asc;                                         
   Parse Arg inp; out = '';                                                      
-  If Right(inp,2) == '==' Then pad = 'AA'; Else                                 
-  If Right(inp,1) ==  '=' Then pad =  'A'; Else pad = '';                       
+  If Right(inp,2) = '==' Then pad = 'AA'; Else                                  
+  If Right(inp,1) =  '=' Then pad =  'A'; Else pad = '';                        
   inp = Convert2ASCII(SubStr(inp,1,Length(inp)-Length(pad))||pad);              
   Do c = Length(inp) to 1 by -1                                                 
     If WordPos(SubStr(inp,c,1), B64) = 0 Then inp = DelStr(inp,c,1);            
@@ -659,15 +688,15 @@ Return Convert2EBCDIC(SubStr(out,1,Length(out)-Length(pad)))||pad;
 GetContinuedCard: Procedure Expose card. i;                                     
 /* mail header cards can be continued up to three times */                      
   _card = Strip(card.i,'Trailing');                                             
-  If Right(_card,1) == '+' Then Do                                              
+  If Right(_card,1) = '+' Then Do                                               
     i = i + 1;                                                                  
     _card = SubStr(_card,1,Length(_card)-1)||Strip(card.i,'Trailing');          
   End                                                                           
-  If Right(_card,1) == '+' Then Do                                              
+  If Right(_card,1) = '+' Then Do                                               
     i = i + 1;                                                                  
     _card = SubStr(_card,1,Length(_card)-1)||Strip(card.i,'Trailing');          
   End                                                                           
-  If Right(_card,1) == '+' Then Do                                              
+  If Right(_card,1) = '+' Then Do                                               
     i = i + 1;                                                                  
     _card = SubStr(_card,1,Length(_card)-1)||Strip(card.i,'Trailing');          
   End                                                                           
@@ -681,7 +710,7 @@ HandleComma: Procedure;
   addr3 = Strip(addr3);                                                         
                                                                                 
   If Pos('@', addr2) > 0,                                                       
-  &  Length(addr3) == 0 Then Do                                                 
+  &  Length(addr3) = 0 Then Do                                                  
     addr3 = addr2;                                                              
     addr2 = '';                                                                 
   End                                                                           
@@ -690,7 +719,7 @@ HandleComma: Procedure;
     addr1 = Strip(addr1);                                                       
     addr2 = Strip(addr2);                                                       
     If Length(addr1) > 0,                                                       
-    &  Length(addr2) == 0 Then Do                                               
+    &  Length(addr2) = 0 Then Do                                                
       addr2 = addr1;                                                            
       addr1 = '';                                                               
     End                                                                         
@@ -809,7 +838,7 @@ RecvBuffers: Procedure Expose _pgm ebc asc crlf msk bad smtp.;
                                                                                 
   msg = Socket('Recv', sockid);                                                 
   Parse Var msg numbytes buffer;                                                
-  If debug == 'V' Then Say '-------- recv='numbytes '--------';                 
+  If debug = 'V' Then Say '-------- recv='numbytes '--------';                  
   If numbytes > 0 Then Do                                                       
     buffer = Convert2EBCDIC(buffer);                                            
     Do n = (smtp.0 + 1) Until Length(buffer) = 0                                
@@ -819,11 +848,11 @@ RecvBuffers: Procedure Expose _pgm ebc asc crlf msk bad smtp.;
       If debug <> 'S',                                                          
       |  Left(smtp.n,3) >= 400,                                                 
       Then Do                                                                   
-        If Left(smtp.n,3) >= 400 Then                                           
-          SayAll Time() smtp.n;                                                 
-        Else Do                                                                 
+      /*If Left(smtp.n,3) >= 400 Then                                           
+          Call                                                                  
+        Else Do                    */                                           
           Say Time() smtp.n;                                                    
-        End                                                                     
+      /*End                        */                                           
       End                                                                       
     End                                                                         
   End                                                                           
@@ -833,7 +862,7 @@ SendBuffers:  /* accepts either a single buffer or stem name for data */
   Parse Arg __sid, __buffer, __debug;                                           
   If Length(__buffer)  > 1,                                                     
   &  Length(__buffer) <= 9,                                                     
-  &  Right(__buffer,1) == '.',                                                  
+  &  Right(__buffer,1) = '.',                                                   
   Then                                                                          
     result = __buffer;                                                          
   Else Do                                                                       
@@ -850,13 +879,13 @@ __SendBuffer: Procedure Expose _pgm asc ebc (result);
   debug = Translate(Left(debug,1));                                             
   Do n = 1 to Value(stem||0)                                                    
     buffer  = Value(stem||n);                                                   
-    If debug == 'V' Then                                                        
+    If debug = 'V' Then                                                         
       Say '-------- send='||(Length(buffer)+2) '--------';                      
     If debug <> 'S' Then Do                                                     
       Select                                                                    
-        When Translate(Left(buffer,5)) == 'USER ' Then                          
+        When Translate(Left(buffer,5)) = 'USER ' Then                           
           Say Time() 'USER ????????';                                           
-        When Translate(Left(buffer,5)) == 'PASS ' Then                          
+        When Translate(Left(buffer,5)) = 'PASS ' Then                           
           Say Time() 'PASS ????????';                                           
         Otherwise                                                               
           Say Time() buffer;                                                    
