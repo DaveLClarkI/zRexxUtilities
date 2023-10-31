@@ -36,7 +36,9 @@ RX3270IO RMODE 24
 *                                                                     *
 *      Assemble this program  as  a  standard  assembler batch phase. *
 * However,  it will not,  then,  be available for just any program to *
-* call -- only a REXX program will be able to call it.                *
+* call -- only a REXX program will be able to call it.   The main job *
+* that calls this external REXX  subroutine  must reserve at least 4K *
+* of PFIXable storage for a 3270 channel I/O appendage routine.       *
 *                                                                     *
 * =================================================================== *
 *                                                                     *
