@@ -222,7 +222,7 @@ RX3270IO RMODE 24
          EJECT
 * =================================================================== *
 DYNASTOR DSECT
-* =================================================================== *
+* ------------------------------------------------------------------- *
 SAVEAREA DS    9D                      STANDARD REGISTER SAVE AREA
 PWORK8   DS    0PL8                    PACKED DOUBLE-WORD
 AWORK4   DS    F
@@ -288,7 +288,7 @@ DYNALENG EQU   *-DYNASTOR              LENGTH OF DYNAMIC STORAGE
          EJECT
 * =================================================================== *
 *        REGISTER USAGES
-* =================================================================== *
+* ------------------------------------------------------------------- *
 R0       EQU   0                       ON ENTRY, REXX ENV BLOCK
 R1       EQU   1                       ON ENTRY, REXX EFPL REG
 R2       EQU   2
@@ -309,7 +309,7 @@ R15      EQU   15                      ENTRY REG
          EJECT
 * =================================================================== *
 *        MACROS                                                       *
-* =================================================================== *
+* ------------------------------------------------------------------- *
          PRINT OFF
          COPY  HEADER                  SUBROUTINE PROLOG
          COPY  TRAILER                 SUBROUTINE EPILOG
@@ -322,7 +322,7 @@ R15      EQU   15                      ENTRY REG
 * =================================================================== *
 RX3270IO HEADER VERSION='1.2',AUTHOR='DLC',DATE='(C)MAR04',            X
                BASE=(R11,R12),SVAREA=SALEN   ALLOC GETVIS DYNAMIC STG
-* =================================================================== *
+* ------------------------------------------------------------------- *
          USING DYNASTOR,R13            POINT TO GETVIS DYNAMIC STORAGE
 *
          SAM31                         SWITCH TO 31-BIT ADDRESSING
@@ -1301,7 +1301,7 @@ RETR15   TRAILER RETCODE=R15,SVAREA=SALEN
          EJECT
 * =================================================================== *
 REG2ZON3 DS    0H    CONVERT REG2 TO LEFT-SIGN, ZONED-DECIMAL AT REG3
-*
+* ------------------------------------------------------------------- *
          CVD   R2,PWORK8               CONVERT REG2 TO PACKED-DECIMAL
          IF    SET_KLZ,(ON,TF),$NOOP   KEEP LEADING ZEROES?
           MVC  EWORK8(7),=X'40212020202060'  LOAD EDIT PATTERN
@@ -1324,24 +1324,25 @@ REG2ZON3 DS    0H    CONVERT REG2 TO LEFT-SIGN, ZONED-DECIMAL AT REG3
          BCTR  R2,0                    DECR. LEN FOR ZERO REF.
          EX    R2,MVRSLT               MOVE VALUE TO RESULT AREA
          LA    R2,1(,R2)               INCR. LEN FOR NORMAL REF.
-*
+* ------------------------------------------------------------------- *
          BR    R15
 MVRSLT   MVC   0(0,R3),0(R1)           (SEE "EX" INSTRUCTION ABOVE)
 * =================================================================== *
          EJECT
 * =================================================================== *
 ZON2REG3 DS    0H    CONVERT ZONED-DECIMAL AT REG2 (L'REG3) INTO REG3
-*
+* ------------------------------------------------------------------- *
          BCTR  R3,0                    DECR. FOR ZERO OFFSET
          EX    R3,PKINPT               PACK 0(?,R2) FOR LENGTH OF R3
          CVB   R3,PWORK8               CONVERT PACKED-DECIMAL INTO REG3
-*
+* ------------------------------------------------------------------- *
          BR    R15
 PKINPT   PACK  PWORK8,0(0,R2)          (SEE "EX" INSTRUCTION ABOVE)
 * =================================================================== *
          EJECT
 * =================================================================== *
 SAYIT    DS    0H    USE REXX "SAY" TO DISPLAY MESSAGE
+* ------------------------------------------------------------------- *
          ST    R3,SAYPARM3             PUT BUFFER LENGTH IN SAY PARM 3
 *
          L     R0,SAVEENVB             GET ENVIRONMENT BLOCK ADDRESS
@@ -1352,12 +1353,13 @@ SAYIT    DS    0H    USE REXX "SAY" TO DISPLAY MESSAGE
           LA   R5,8                      SET RESULT CODE
           B    RETERR                    GO RETURN ERROR
          ENDIF                         ENDIF
-*
+* ------------------------------------------------------------------- *
          BR    R5
 * =================================================================== *
          EJECT
 * =================================================================== *
 GETVAR   DS    0H    GET REXX VARIABLE VALUE
+* ------------------------------------------------------------------- *
          XR    R5,R5                   ZERO RETURN CODE REGISTER
          MVI   SHVCODE,SHVFETCH        SET REQUEST CODE TO 'F'
          ST    R3,SHVNAML              PUT LENGTH OF VAR NAME IN SHVCB
@@ -1373,12 +1375,13 @@ GETVAR   DS    0H    GET REXX VARIABLE VALUE
            IC  R15,SHVRET                SAVE ARXEXCOM CC
           ENDIF                         ENDIF
          ENDIF                         ENDIF
-*
+* ------------------------------------------------------------------- *
          BR    R2
 * =================================================================== *
          EJECT
 * =================================================================== *
 SETVAR   DS    0H    SET REXX VARIABLE VALUE
+* ------------------------------------------------------------------- *
          MVI   SHVCODE,SHVSTORE        SET REQUEST CODE TO 'S'
          ST    R3,SHVNAML              PUT LENGTH OF VAR NAME IN SHVCB
 *
@@ -1400,12 +1403,13 @@ SETVAR   DS    0H    SET REXX VARIABLE VALUE
            ENDIF                         ENDIF
           ENDIF                         ENDIF
          ENDIF                         ENDIF
-*
+* ------------------------------------------------------------------- *
          BR    R5
 * =================================================================== *
          EJECT
 * =================================================================== *
 BUFADR   DS    0H    CONVERT 3270 12-BIT ADDR TO 14-BIT ADDR
+* ------------------------------------------------------------------- *
          NI    0(R2),B'00111111'       CLEAR HIGH-ORDER BITS
          NI    1(R2),B'00111111'        ON BOTH BYTES
          LH    R2,0(,R2)               GET BOTH BYTES
@@ -1413,13 +1417,13 @@ BUFADR   DS    0H    CONVERT 3270 12-BIT ADDR TO 14-BIT ADDR
          SRDL  R2,8                    RIGHT JUSTIFY MOST SIG. 6 BITS
          SLL   R3,2                    LEFT JUSTIFY LEAST SIG. 6 BITS
          SLDL  R2,6                    JOIN MSB/LSB IN REGISTER 2
-*
+* ------------------------------------------------------------------- *
          BR    R5
 * =================================================================== *
          EJECT
 * =================================================================== *
 STORAGE  DS    0D
-* =================================================================== *
+* ------------------------------------------------------------------- *
 SALEN    DC    A(DYNALENG)
 BUFLEN   DC    A(L'SCRBUF)
 CARTNEP  DC    F'0'               CHANNEL APPENDAGE RTN ENTRY POINT
