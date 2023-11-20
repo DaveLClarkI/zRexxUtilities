@@ -14,9 +14,10 @@ RXLIBRIO RMODE 24
 *                                                                     *
 *      This  external  REXX  function  allows  a  REXX  procedure  to *
 * interact with VSE libraries  via LIBR's internal program interface. *
-* This wouldn't be important if it  weren't for the fact that calling *
-* LIBR directly,  and therefore using OUTTRAP to get the LIBR output, *
-* only works from a main task.                                        *
+* This wouldn't be important  if  it  weren't  for the fact that REXX *
+* provides  no  means  of  capturing  LIBR's  punched output.   Also, *
+* calling LIBR directly,  and therefore using OUTTRAP to get the LIBR *
+* listed output, only works from a main task.                         *
 *                                                                     *
 *      If someone were  to  start  REXX  in  a  subtask then the REXX *
 * OUTTRAP function would  issue  an  error  message -- preventing the *
