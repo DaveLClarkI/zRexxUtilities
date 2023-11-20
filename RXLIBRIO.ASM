@@ -35,9 +35,19 @@ RXLIBRIO RMODE 24
 *                                                                     *
 *                           IMPLEMENTATION                            *
 *                                                                     *
-*      Assemble this program  as  a  standard  assembler batch phase. *
-* However,  it will not,  then,  be available for just any program to *
-* call -- only a REXX program will be able to call it.                *
+*      Create the four object decks,  first, as standard 24-bit batch *
+* subroutines (actually,  three subroutines  and  one main program -- *
+* but as an object deck).  Then, link this program's object deck as a *
+* standard,  24-bit batch main  program  (even  though it switches to *
+* 31-bit addressing mode, internally).                                *
+*                                                                     *
+*      RXLIBRIX     RXLIBRIO -- SYSIPT exit routine                   *
+*      RXLIBRLX     RXLIBRIO -- SYSLST exit routine                   *
+*      RXLIBRPX     RXLIBRIO -- SYSPCH exit routine                   *
+*      RXLIBRIO     REXX Function For LIBR I/O & Statistics           *
+*                                                                     *
+* This main program will not, however, then be available for just any *
+* program to call.  Only a REXX procedure will be able to call it.    *
 *                                                                     *
 * =================================================================== *
 *                                                                     *
