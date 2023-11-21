@@ -375,6 +375,7 @@ RXLIBRIO HEADER VERSION='1.0',AUTHOR='DLC',DATE='(C)NOV23',            X
            LHI R5,10                     INDICATE LOAD FAILURE
            B   RETERR                    GO RETURN ERROR
           ENDIF                         ENDIF
+          ST   R1,ENTRY_P               SAVE RXLIBRIO ENTRY POINT       00033400
          ENDIF                         ENDIF                            00033600
 *
 * SETUP FOR LIBR UNDER-THE-COVERS
