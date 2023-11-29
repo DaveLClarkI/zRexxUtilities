@@ -22,7 +22,7 @@ RX3270AP RMODE 24
          EJECT
 * =================================================================== *
 *        REGISTER USAGES
-* =================================================================== *
+* ------------------------------------------------------------------- *
 R0       EQU   0
 R1       EQU   1                       CCB ADDR
 R2       EQU   2                       CHANNEL AND DEVICE NO.
@@ -36,7 +36,7 @@ R8       EQU   8                       BASE FOR APPENDAGE ROUTINE
          EJECT
 * =================================================================== *
 *        MACROS                                                       *
-* =================================================================== *
+* ------------------------------------------------------------------- *
          PRINT OFF
          COPY  IF                      STRUCTURED MACRO SET
          COPY  SELECT                  STRUCTURED MACRO SET
@@ -48,7 +48,7 @@ RX3270AP CSECT 0
          USING *,R8
          USING CCBADR,R1
          USING PUBADR,R3
-* =================================================================== *
+* ------------------------------------------------------------------- *
          PUSH  ACONTROL
          ACONTROL FLAG(NOPAGE0)
 *
@@ -58,13 +58,13 @@ RX3270AP CSECT 0
 *
          SELECT                             SELECT CONDITION
          WHEN  x'44'(R0),(ON,TF),x'80'      WHEN INTERRUPT IS ATTN
-          MVC  x'44'(2,R0),=x'0C00'          SET CE+DE AND DEQUE
-         WHEN  X'44'(R0),EQ,X'08'           WHEN INTERRUPT IS CH END
+          MVC  x'44'(2,R0),=x'0C00'          SET CE+DE  AND DEQUE
+         WHEN  x'44'(R0),EQ,x'08'           WHEN INTERRUPT IS CH END
           NOPR 0                             DO NOTHING AND DEQUE
-         WHEN  X'44'(R0),EQ,X'04',AND,      WHEN INTERRUPT IS DEVEND   *
+         WHEN  x'44'(R0),EQ,x'04',AND,      WHEN INTERRUPT IS DEVEND   X
                R6,(Z,LTR),R6                AND NO PENDING CCW
-          MVC  x'44'(2,R0),=x'0600'          SET DE+UC AND DEQUE
-         WHEN  x'44'(R0),EQ,x'0C',AND,      WHEN INTERRUPT IS CE+DE    *
+          MVC  x'44'(2,R0),=x'0600'          SET DE+UC  AND DEQUE
+         WHEN  x'44'(R0),EQ,x'0C',AND,      WHEN INTERRUPT IS CE+DE    X
                R6,(Z,LTR),R6                AND NO PENDING CCW
           MVC  x'44'(2,R0),=x'0F00'          SET CE+DE+UC+UE AND DEQUE
          WHEN  OTHER                        WHEN CE+DE OR JUST DE

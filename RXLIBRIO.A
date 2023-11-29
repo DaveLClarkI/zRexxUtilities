@@ -1,65 +1,65 @@
-EXITSAVE DS    9D                      EXIT REGISTER SAVEAREA                   
-PWORK8   DS    0PL8                    PACKED DOUBLE-WORD                       
-AWORK4   DS    F                                                                
-         DS    F                                                                
-EWORK8   DS    CL8                     EDITED WORK FIELD                        
-*                                                                               
-INLCPARM DS    F                       LIBR PARAMETER LIST                      
-         COPY  INLCPARB                LIBR PARAMETER BLOCK                     
-*                                                                               
-SAVEEVAL DS    F                       EVALUATION BLOCK ADDRESS                 
-SAYPARMB DS    3F                      ARXSAY PARAMETER BLOCK                   
-SAYPLAST EQU   *-4                       POINT TO LAST PARM FOR FLAG            
-SAYPARM1 DS    CL8                     'WRITE   '                               
-SAYPARM2 DS    XL4                     ADDRESS OF SAY OUTPUT                    
-SAYPARM3 DS    XL4                     LENGTH OF SAY OUTPUT                     
-*                                                                               
-SAVEENVB DS    F                       ENVIRONMENT BLOCK ADDRESS                
-SHVPARMB DS    4F                      ARXEXCOM PARAMETER BLOCK                 
-SHVPLAST EQU   *-4                       POINT TO LAST PARM FOR FLAG            
-SHVPARM1 DS    CL8                     'ARXEXCOM'                               
-SHVPARM2 DS    XL4                                                              
-SHVCTLB  DS    XL32                    STORAGE FOR SHV CONTROL BLOCK            
-*                                                                               
-IPTSTEMX DS    F                       SYSIPT CURRENT INDEX                     
-IPTSTEMC DS    F                       SYSIPT STEM NAME COUNT                   
-LSTSTEMC DS    F                       SYSLST STEM NAME COUNT                   
-PCHSTEMC DS    F                       SYSPCH STEM NAME COUNT                   
-IPTSTEML DS    F                       SYSIPT STEM NAME LENGTH                  
-LSTSTEML DS    F                       SYSLST STEM NAME LENGTH                  
-PCHSTEML DS    F                       SYSPCH STEM NAME LENGTH                  
-         ORG   IPTSTEMX                                                         
-COUNTERS DS    XL28                    FOR INITIALIZATION                       
-         ORG                                                                    
-IPTSTEMN DS    CL9                     SYSIPT STEM NAME                         
-LSTSTEMN DS    CL9                     SYSLST STEM NAME                         
-PCHSTEMN DS    CL9                     SYSPCH STEM NAME                         
-OPTFLAG  DS    XL1                     OPTION FLAGS                             
-SYSIPTF  DF    B'10000000',OPTFLAG     SYSIPT PRESENT                           
-SYSLSTF  DF    B'01000000',OPTFLAG     SYSLST PRESENT                           
-SYSPCHF  DF    B'00100000',OPTFLAG     SYSPCH PRESENT                           
-DEBUG_F  DF    B'00000010',OPTFLAG     DEBUG FLAG                               
-SET_KLZ  DF    B'00000001',OPTFLAG     KEEP LEADING ZEROES                      
-*                                                                               
-         DS    0D                      ALIGNMENT                                
-TRTBL    DS    CL256                   TEMPORARY TRANSLATE TABLE                
-VARNAME  DS    CL250                   VARIABLE NAME                            
-VARDATA  DS    CL256                   VARIABLE VALUE                           
-*                                                                               
-IPTAREA  DS    0D                      SYSIPT AREA                              
-IPTLENG  DS    H                       SYSIPT AREA LENGTH                       
-         DS    CL6                     RESERVED                                 
-IPTDATA  DS    CL80                    SYSIPT DATA AREA                         
-IPTEND   EQU   *                                                                
-*                                                                               
-LSTAREA  DS    0D                      SYSLST AREA                              
-LSTLENG  DS    H                       SYSLST AREA LENGTH                       
-         DS    CL6                     RESERVED                                 
-LSTDATA  DS    CL121                   SYSLST DATA AREA                         
-LSTEND   EQU   *                                                                
-*                                                                               
-PCHAREA  DS    0D                      SYSPCH AREA                              
-PCHLENG  DS    H                       SYSPCH AREA LENGTH                       
-         DS    CL6                     RESERVED                                 
-PCHDATA  DS    CL80                    SYSPCH DATA AREA                         
-PCHEND   EQU   *                                                                
+EXITSAVE DS    9D                      EXIT REGISTER SAVEAREA
+PWORK8   DS    0PL8                    PACKED DOUBLE-WORD
+AWORK4   DS    F
+         DS    F
+EWORK8   DS    CL8                     EDITED WORK FIELD
+*
+INLCPARM DS    F                       LIBR PARAMETER LIST
+         COPY  INLCPARB                LIBR PARAMETER BLOCK
+*
+SAVEEVAL DS    F                       EVALUATION BLOCK ADDRESS
+SAYPARMB DS    3F                      ARXSAY PARAMETER BLOCK
+SAYPLAST EQU   *-4                       POINT TO LAST PARM FOR FLAG
+SAYPARM1 DS    CL8                     'WRITE   '
+SAYPARM2 DS    XL4                     ADDRESS OF SAY OUTPUT
+SAYPARM3 DS    XL4                     LENGTH OF SAY OUTPUT
+*
+SAVEENVB DS    F                       ENVIRONMENT BLOCK ADDRESS
+SHVPARMB DS    4F                      ARXEXCOM PARAMETER BLOCK
+SHVPLAST EQU   *-4                       POINT TO LAST PARM FOR FLAG
+SHVPARM1 DS    CL8                     'ARXEXCOM'
+SHVPARM2 DS    XL4
+SHVCTLB  DS    XL32                    STORAGE FOR SHV CONTROL BLOCK
+*
+IPTSTEMX DS    F                       SYSIPT CURRENT INDEX
+IPTSTEMC DS    F                       SYSIPT STEM NAME COUNT
+LSTSTEMC DS    F                       SYSLST STEM NAME COUNT
+PCHSTEMC DS    F                       SYSPCH STEM NAME COUNT
+IPTSTEML DS    F                       SYSIPT STEM NAME LENGTH
+LSTSTEML DS    F                       SYSLST STEM NAME LENGTH
+PCHSTEML DS    F                       SYSPCH STEM NAME LENGTH
+         ORG   IPTSTEMX
+COUNTERS DS    XL28                    FOR INITIALIZATION
+         ORG
+IPTSTEMN DS    CL9                     SYSIPT STEM NAME
+LSTSTEMN DS    CL9                     SYSLST STEM NAME
+PCHSTEMN DS    CL9                     SYSPCH STEM NAME
+OPTFLAG  DS    XL1                     OPTION FLAGS
+SYSIPTF  DF    B'10000000',OPTFLAG     SYSIPT PRESENT
+SYSLSTF  DF    B'01000000',OPTFLAG     SYSLST PRESENT
+SYSPCHF  DF    B'00100000',OPTFLAG     SYSPCH PRESENT
+DEBUG_F  DF    B'00000010',OPTFLAG     DEBUG FLAG
+SET_KLZ  DF    B'00000001',OPTFLAG     KEEP LEADING ZEROES
+*
+         DS    0D                      ALIGNMENT
+TRTBL    DS    CL256                   TEMPORARY TRANSLATE TABLE
+VARNAME  DS    CL250                   VARIABLE NAME
+VARDATA  DS    CL256                   VARIABLE VALUE
+*
+IPTAREA  DS    0D                      SYSIPT AREA
+IPTLENG  DS    H                       SYSIPT AREA LENGTH
+         DS    CL6                     RESERVED
+IPTDATA  DS    CL80                    SYSIPT DATA AREA
+IPTEND   EQU   *
+*
+LSTAREA  DS    0D                      SYSLST AREA
+LSTLENG  DS    H                       SYSLST AREA LENGTH
+         DS    CL6                     RESERVED
+LSTDATA  DS    CL121                   SYSLST DATA AREA
+LSTEND   EQU   *
+*
+PCHAREA  DS    0D                      SYSPCH AREA
+PCHLENG  DS    H                       SYSPCH AREA LENGTH
+         DS    CL6                     RESERVED
+PCHDATA  DS    CL80                    SYSPCH DATA AREA
+PCHEND   EQU   *

@@ -181,7 +181,7 @@ RXLIBRIO HEADER VERSION='1.0',AUTHOR='DLC',DATE='(C)NOV23',            X
          IF    ENVBLOCK_ID,(NE,CLC),=C'ENVBLOCK'
           WTO  'RXLIBRIO: REQUIRES THE REXX ENVIRONMENT BLOCK'
           LHI  R15,12                  SET ABNORMAL RETURN CODE
-          B    RETR15                  GO RETURN ERROR
+          J    RETR15                  GO RETURN ERROR
          ENDIF
          LR    R8,R1                   EXTERNAL FUNCTION PARAMETER LIST
          USING EFPL,R8                 ESTABLISH ADDRESSABILITY
@@ -276,13 +276,13 @@ RXLIBRIO HEADER VERSION='1.0',AUTHOR='DLC',DATE='(C)NOV23',            X
            LA  R3,PCHSTEMN-1            POINT TO LAST CHARACTER
           WHEN OTHER
            LHI R5,4                      SET RESULT CODE
-           B   RETERR                    GO RETURN ERROR
+           J   RETERR                    GO RETURN ERROR
           ENDSL                         ENDIF
           AR   R3,R2                    ADJUST TO LAST CHARACTER
           IF   R2,(HT,C),=F'9',OR,      IF ARG LEN > 9                 X
                0(R3),NE,C'.'            OR LAST CHAR NOT A PERIOD
            LHI R5,4                      SET RESULT CODE
-           B   RETERR                    GO RETURN ERROR
+           J   RETERR                    GO RETURN ERROR
           ENDIF                         ENDIF
 
           LA   R6,L'ARGTABLE_END(,R6)  ADVANCE TO NEXT ARGUMENT
@@ -297,7 +297,7 @@ RXLIBRIO HEADER VERSION='1.0',AUTHOR='DLC',DATE='(C)NOV23',            X
          IF    SYSIPTF,(NO,TF),$NOOP,OR,   IF MISSING IPT ARGUMENT     X
                SYSLSTF,(NO,TF),$NOOP       OR MISSING LST ARGUMENT
           LHI  R5,4                     SET RESULT CODE
-          B    RETERR                   GO RETURN ERROR
+          J    RETERR                   GO RETURN ERROR
          ENDIF                         ENDIF
 *
 * OUTPUT TO SYSLST -- ARXSAY
@@ -316,6 +316,13 @@ RXLIBRIO HEADER VERSION='1.0',AUTHOR='DLC',DATE='(C)NOV23',            X
 * FOR PERFORMANCE REASONS, KEEP THIS ROUTINE IN MEMORY
 *
          IF    ENTRY_P,(EQ,CLC),=F'0'  IF FIRST TIME CALL
+          CDLOAD RXLIBRIO               MAKE THIS RTN STAY IN MEMORY
+          IF   R15,(NZ,LTR),R15         IF CDLOAD ERROR
+           LHI R5,10                     INDICATE LOAD FAILURE
+           J   RETERR                    GO RETURN ERROR
+          ENDIF                         ENDIF
+          ST   R1,ENTRY_P               SAVE RXLIBRIO ENTRY POINT       00033400
+*
           IF   DEBUG_F,(ON,TF),$NOOP    IF DEBUG IS ON
 *
           MVC  VARDATA+0(26),=C'RXLIBRIO Load at: xxxxxxxx'
@@ -324,7 +331,7 @@ RXLIBRIO HEADER VERSION='1.0',AUTHOR='DLC',DATE='(C)NOV23',            X
           TR   EWORK8(8),TRTBL           AND TRANSLATE TO PRINTABLE
           MVC  VARDATA+18(8),EWORK8     THEN PUT IN MSG AREA
           LHI  R3,26                    SET LENGTH OF OUTPUT
-          BAS  R5,SAYIT                 GO SAY IT
+          JAS  R5,SAYIT                 GO SAY IT
 *
           MVC  VARDATA+0(31),=C'RXLIBRIX Load at: xxxxxxxx xxxx'
           MVC  AWORK4,=V(RXLIBRIX)      STORE BASE ADDRESS
@@ -338,7 +345,7 @@ RXLIBRIO HEADER VERSION='1.0',AUTHOR='DLC',DATE='(C)NOV23',            X
           TR   EWORK8(8),TRTBL           AND TRANSLATE TO PRINTABLE
           MVC  VARDATA+27(4),EWORK8+4   THEN ADD TO MSG AREA
           LHI  R3,31                    SET LENGTH OF OUTPUT
-          BAS  R5,SAYIT                 GO SAY IT
+          JAS  R5,SAYIT                 GO SAY IT
 *
           MVC  VARDATA+0(31),=C'RXLIBRLX Load at: xxxxxxxx xxxx'
           MVC  AWORK4,=V(RXLIBRLX)      STORE BASE ADDRESS
@@ -352,7 +359,7 @@ RXLIBRIO HEADER VERSION='1.0',AUTHOR='DLC',DATE='(C)NOV23',            X
           TR   EWORK8(8),TRTBL           AND TRANSLATE TO PRINTABLE
           MVC  VARDATA+27(4),EWORK8+4   THEN ADD TO MSG AREA
           LHI  R3,31                    SET LENGTH OF OUTPUT
-          BAS  R5,SAYIT                 GO SAY IT
+          JAS  R5,SAYIT                 GO SAY IT
 *
           MVC  VARDATA+0(31),=C'RXLIBRPX Load at: xxxxxxxx xxxx'
           MVC  AWORK4,=V(RXLIBRPX)      STORE BASE ADDRESS
@@ -366,16 +373,9 @@ RXLIBRIO HEADER VERSION='1.0',AUTHOR='DLC',DATE='(C)NOV23',            X
           TR   EWORK8(8),TRTBL           AND TRANSLATE TO PRINTABLE
           MVC  VARDATA+27(4),EWORK8+4   THEN ADD TO MSG AREA
           LHI  R3,31                    SET LENGTH OF OUTPUT
-          BAS  R5,SAYIT                 GO SAY IT
+          JAS  R5,SAYIT                 GO SAY IT
 *
           ENDIF                         END OF DEBUG TEST
-*
-          CDLOAD RXLIBRIO               MAKE THIS RTN STAY IN MEMORY
-          IF   R15,(NZ,LTR),R15         IF CDLOAD ERROR
-           LHI R5,10                     INDICATE LOAD FAILURE
-           B   RETERR                    GO RETURN ERROR
-          ENDIF                         ENDIF
-          ST   R1,ENTRY_P               SAVE RXLIBRIO ENTRY POINT       00033400
          ENDIF                         ENDIF                            00033600
 *
 * SETUP FOR LIBR UNDER-THE-COVERS
@@ -390,7 +390,7 @@ RXLIBRIO HEADER VERSION='1.0',AUTHOR='DLC',DATE='(C)NOV23',            X
           LOAD LIBR,(R2),SYS=YES,RET=YES                                00032900
           IF   R15,(NZ,LTR),R15         IF NOT LOADED OK                00033000
            LHI R5,10                     INDICATE LOAD ERROR            00033100
-           B   RETERR                    GO RETURN ERROR                00033200
+           J   RETERR                    GO RETURN ERROR                00033200
           ENDIF                         ENDIF                           00033300
           ST   R1,LIBR_EP               SAVE LIBR ENTRY POINT           00033400
 *
@@ -402,7 +402,7 @@ RXLIBRIO HEADER VERSION='1.0',AUTHOR='DLC',DATE='(C)NOV23',            X
            TR  EWORK8(8),TRTBL            AND TRANSLATE TO PRINTABLE
            MVC VARDATA+18(8),EWORK8      THEN PUT IN MSG AREA
            LHI R3,26                     SET LENGTH OF OUTPUT
-           BAS R5,SAYIT                  GO SAY IT
+           JAS R5,SAYIT                  GO SAY IT
           ENDIF                         END OF DEBUG TEST
          ENDIF                         ENDIF                            00033600
 *
@@ -445,47 +445,47 @@ RXLIBRIO HEADER VERSION='1.0',AUTHOR='DLC',DATE='(C)NOV23',            X
          XR    R2,R2                   SET TO ZERO INDEX
          ST    R2,IPTSTEMX             SAVE CURRENT INDEX
          LA    R3,0(,R4)               POINT TO VARIABLE NAME AREA
-         BAS   R15,REG2ZON3            CONVERT THAT TO ZONED-DECIMAL
+         JAS   R15,REG2ZON3            CONVERT THAT TO ZONED-DECIMAL
          L     R3,IPTSTEML             COMPUTE LENGTH OF STEM NAME
          AR    R3,R2                    PLUS LENGTH OF COUNTER
-         BAS   R2,GETVAR               RETRIEVE THE VARIABLE VALUE
+         JAS   R2,GETVAR               RETRIEVE THE VARIABLE VALUE
          IF    R5,(NZ,LTR),R5,OR,      IF VARIABLE NOT FOUND           X
                SHVVALL,(NH,CLC),=F'0'  OR VALUE LENGTH NOT > ZERO
           LHI  R5,-1                    SET INVALID STEM.0
-          B    RETERR                   GO RETURN ERROR
+          J    RETERR                   GO RETURN ERROR
          ENDIF                         ENDIF
          LA    R2,VARDATA              POINT TO VAR VALUE
          L     R3,SHVVALL              GET VAR LENGTH
-         BAS   R15,ZON2REG3            CONVERT THAT TO BINARY
+         JAS   R15,ZON2REG3            CONVERT THAT TO BINARY
          ST    R3,IPTSTEMC             SAVE IPT STEM COUNT
 * GET SYSIPT.1 VALUE
          LHI   R2,1                    SET TO INDEX 1
          ST    R2,IPTSTEMX             SAVE CURRENT INDEX
          LA    R3,0(,R4)               POINT TO VARIABLE NAME AREA
-         BAS   R15,REG2ZON3            CONVERT THAT TO ZONED-DECIMAL
+         JAS   R15,REG2ZON3            CONVERT THAT TO ZONED-DECIMAL
          L     R3,IPTSTEML             COMPUTE LENGTH OF STEM NAME
          AR    R3,R2                    PLUS LENGTH OF COUNTER
-         BAS   R2,GETVAR               RETRIEVE THE VARIABLE VALUE
+         JAS   R2,GETVAR               RETRIEVE THE VARIABLE VALUE
          IF    R5,(NZ,LTR),R5,OR,      IF VARIABLE NOT FOUND           X
                SHVVALL,(NH,CLC),=F'0'  OR VALUE LENGTH NOT > ZERO
           LHI  R5,-2                    SET INVALID STEM.n
           IF   R15,(Z,LTR),R15          IF ZERO RETURN CODE
            L   R15,IPTSTEMX              USER STEM INDEX AS RESULT
           ENDIF                         ENDIF
-          B    RETERR                   GO RETURN ERROR
+          J    RETERR                   GO RETURN ERROR
 IPTMOVE  MVC   IPTDATA(0),VARDATA      (SEE "EX" INSTRUCTION BELOW)
          ENDIF                         ENDIF
          MVI   IPTDATA,X'40'           CLEAR INPUT DATA
          MVC   IPTDATA+1(79),IPTDATA     TO ALL BLANKS
          L     R3,SHVVALL              GET VAR LENGTH
          SHI   R3,1                     MINUS 1 FOR EXECUTE
-         EX    R3,IPTMOVE              MOVE TO LIBR PARM
+         EXRL  R3,IPTMOVE              MOVE TO LIBR PARM
 *
          IF    DEBUG_F,(ON,TF),$NOOP   IF DEBUG IS ON
           MVC  VARDATA+0(7),=C'SYSIPT:' LET'S SEE THE CARD INPUT
           MVC  VARDATA+8(L'IPTDATA),IPTDATA
           LHI  R3,IPTEND-IPTAREA        SET LENGTH OF CARD INPUT
-          BAS  R5,SAYIT                 GO SAY IT
+          JAS  R5,SAYIT                 GO SAY IT
          ENDIF                         END OF DEBUG TEST
 *
 * INVOKE LIBR UNDER-THE-COVERS
@@ -504,7 +504,7 @@ IPTMOVE  MVC   IPTDATA(0),VARDATA      (SEE "EX" INSTRUCTION BELOW)
           IF   R5,(Z,LTR),R5            IF NO FAILURE CODE
            LHI R5,-5                     INDICATE R15 ERROR
           ENDIF                         ENDIF
-          B    RETERR                   GO RETURN ERROR
+          J    RETERR                   GO RETURN ERROR
          ENDIF                         ENDIF
 *
 * RETURN RESULT
@@ -526,12 +526,12 @@ RETERR   SAM31                         MAKE SURE IT IS 31-BIT MODE
          CF    SET_KLZ                 REG2ZON3 NO LEADING ZEROES
          LR    R2,R5                   COPY R5 TO R2
          LA    R3,VARDATA              POINT TO VARIABLE DATA AREA
-         BAS   R15,REG2ZON3            CONVERT THAT TO ZONED-DECIMAL
+         JAS   R15,REG2ZON3            CONVERT THAT TO ZONED-DECIMAL
          LA    R1,VARDATA              POINT BACK TO VAR DATA AREA
          STM   R1,R2,SHVVALA           PUT IN SHV CONTROL BLOCK
          LA    R3,2                    SET LENGTH OF VARIABLE NAME
          MVC   VARNAME+0(3),=C'RC '    SET VARIABLE NAME
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
 * ------------------------------------------------------------------- *
          XR    R15,R15                 CLEAR REG15 FOR RETURN CODE
 RETR15   TRAILER RETCODE=R15,SVAREA=SALEN
@@ -560,7 +560,7 @@ REG2ZON3 DS    0H    CONVERT REG2 TO LEFT-SIGN, ZONED-DECIMAL AT REG3
           SR   R2,R1                   CALC NO. OF CHARS TO MOVE
          ENDIF
          BCTR  R2,0                    DECR. LEN FOR ZERO REF.
-         EX    R2,MVRSLT               MOVE VALUE TO RESULT AREA
+         EXRL  R2,MVRSLT               MOVE VALUE TO RESULT AREA
          LA    R2,1(,R2)               INCR. LEN FOR NORMAL REF.
 * ------------------------------------------------------------------- *
          BR    R15
@@ -571,7 +571,7 @@ MVRSLT   MVC   0(0,R3),0(R1)           (SEE "EX" INSTRUCTION ABOVE)
 ZON2REG3 DS    0H    CONVERT ZONED-DECIMAL AT REG2 (L'REG3) INTO REG3
 * ------------------------------------------------------------------- *
          BCTR  R3,0                    DECR. FOR ZERO OFFSET
-         EX    R3,PKINPT               PACK 0(?,R2) FOR LENGTH OF R3
+         EXRL  R3,PKINPT               PACK 0(?,R2) FOR LENGTH OF R3
          CVB   R3,PWORK8               CONVERT PACKED-DECIMAL INTO REG3
 * ------------------------------------------------------------------- *
          BR    R15
@@ -589,7 +589,7 @@ SAYIT    DS    0H    USE REXX "SAY" TO DISPLAY MESSAGE
          BASR  R14,R15                 CALL ARXSAY
          IF    R15,(NZ,LTR),R15        IF NON-ZERO RETURN CODE
           LA   R5,8                      SET RESULT CODE
-          B    RETERR                    GO RETURN ERROR
+          J    RETERR                    GO RETURN ERROR
          ENDIF                         ENDIF
 * ------------------------------------------------------------------- *
          BR    R5
@@ -632,12 +632,12 @@ SETVAR   DS    0H    SET REXX VARIABLE VALUE
           IF   VARNAME(3),(NE,CLC),=C'RC '  IF NOT 'RC', REPORT ERRORS
            IF  R15,(NZ,LTR),R15          IF NON-ZERO RETURN CODE
             LA R5,8                       SET RESULT CODE
-            B  RETERR                     GO RETURN ERROR
+            J  RETERR                     GO RETURN ERROR
            ENDIF                         ENDIF
            IF  SHVRET,NE,SHVNEWV         IF NOT NEW VARIABLE
             IC R15,SHVRET                 SAVE ARXEXCOM CC
             LA R5,8                       SET RESULT CODE
-            B  RETERR                     GO RETURN ERROR
+            J  RETERR                     GO RETURN ERROR
            ENDIF                         ENDIF
           ENDIF                         ENDIF
          ENDIF                         ENDIF

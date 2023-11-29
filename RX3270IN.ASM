@@ -244,7 +244,7 @@ R15      EQU   15            ENTRY REG
 * =================================================================== *
          EJECT
 * =================================================================== *
-RX3270IN HEADER VERSION='1.1',AUTHOR='DLC',DATE='(C)MAR04',            X
+RX3270IN HEADER VERSION=1.1,AUTHOR=DLC,DATE='(C)MAR04',                X
                BASE=R12,SVAREA=SALEN
 * =================================================================== *
          USING DYNASTOR,R13
@@ -256,7 +256,7 @@ RX3270IN HEADER VERSION='1.1',AUTHOR='DLC',DATE='(C)MAR04',            X
          IF    ENVBLOCK_ID,(NE,CLC),=C'ENVBLOCK'
           WTO  'RX3270IN: REQUIRES THE REXX ENVIRONMENT BLOCK'
           LA   R15,12                  SET ABNORMAL RETURN CODE
-          B    RETR15                  GO RETURN ERROR
+          J    RETR15                  GO RETURN ERROR
          ENDIF
          L     R8,ENVBLOCK_IRXEXTE     REXX EXTERNAL ENTRY-POINT VECTOR
          USING ARXEXTE,R8
@@ -310,23 +310,23 @@ RX3270IN HEADER VERSION='1.1',AUTHOR='DLC',DATE='(C)MAR04',            X
      LA R3,L'STEM+L'CCC+L'LIT+L'CCCWRITE
          MVC   0(L'CCCWRITE,R4),CCCWRITE
          MVI   VARDATA,X'01'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'CCC+L'LIT+L'CCCERWRT
          MVC   0(L'CCCERWRT,R4),CCCERWRT
          MVI   VARDATA,X'05'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'CCC+L'LIT+L'CCCERWRA
          MVC   0(L'CCCERWRA,R4),CCCERWRA
          MVI   VARDATA,X'0D'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'CCC+L'LIT+L'CCCERAUP
          MVC   0(L'CCCERAUP,R4),CCCERAUP
          MVI   VARDATA,X'0F'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'CCC+L'LIT+L'CCCWRSTR
          MVC   0(L'CCCWRSTR,R4),CCCWRSTR
          MVI   VARDATA,X'11'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
 *
 * ...WRITE CONTROL CHARACTERS
          MVC   VARNAME+L'STEM(L'WCC),WCC
@@ -336,35 +336,35 @@ RX3270IN HEADER VERSION='1.1',AUTHOR='DLC',DATE='(C)MAR04',            X
      LA R3,L'STEM+L'WCC+L'LIT+L'WCCLKFST
          MVC   0(L'WCCLKFST,R4),WCCLKFST
          MVI   VARDATA,X'40'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'WCC+L'LIT+L'WCCLKFRS
          MVC   0(L'WCCLKFRS,R4),WCCLKFRS
          MVI   VARDATA,X'C1'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'WCC+L'LIT+L'WCCFKFST
          MVC   0(L'WCCFKFST,R4),WCCFKFST
          MVI   VARDATA,X'C2'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'WCC+L'LIT+L'WCCFKFRS
          MVC   0(L'WCCFKFRS,R4),WCCFKFRS
          MVI   VARDATA,X'C3'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'WCC+L'LIT+L'WCCLKFSA
          MVC   0(L'WCCLKFSA,R4),WCCLKFSA
          MVI   VARDATA,X'C4'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'WCC+L'LIT+L'WCCLKFRA
          MVC   0(L'WCCLKFRA,R4),WCCLKFRA
          MVI   VARDATA,X'C5'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'WCC+L'LIT+L'WCCFKFSA
          MVC   0(L'WCCFKFSA,R4),WCCFKFSA
          MVI   VARDATA,X'C6'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'WCC+L'LIT+L'WCCFKFRA
          MVC   0(L'WCCFKFRA,R4),WCCFKFRA
          MVI   VARDATA,X'C7'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
 *
 * ...DATA STREAM ORDERS
          MVC   VARNAME+L'STEM(L'DSO),DSO
@@ -374,43 +374,43 @@ RX3270IN HEADER VERSION='1.1',AUTHOR='DLC',DATE='(C)MAR04',            X
      LA R3,L'STEM+L'DSO+L'LIT+L'DSOPGTAB
          MVC   0(L'DSOPGTAB,R4),DSOPGTAB
          MVI   VARDATA,X'05'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'DSO+L'LIT+L'DSOGRESC
          MVC   0(L'DSOGRESC,R4),DSOGRESC
          MVI   VARDATA,X'08'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'DSO+L'LIT+L'DSOSETBA
          MVC   0(L'DSOSETBA,R4),DSOSETBA
          MVI   VARDATA,X'11'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'DSO+L'LIT+L'DSOERASE
          MVC   0(L'DSOERASE,R4),DSOERASE
          MVI   VARDATA,X'12'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'DSO+L'LIT+L'DSOCURSR
          MVC   0(L'DSOCURSR,R4),DSOCURSR
          MVI   VARDATA,X'13'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'DSO+L'LIT+L'DSOSTFLD
          MVC   0(L'DSOSTFLD,R4),DSOSTFLD
          MVI   VARDATA,X'1D'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'DSO+L'LIT+L'DSOSETAT
          MVC   0(L'DSOSETAT,R4),DSOSETAT
          MVI   VARDATA,X'28'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'DSO+L'LIT+L'DSOSTFEX
          MVC   0(L'DSOSTFEX,R4),DSOSTFEX
          MVI   VARDATA,X'29'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'DSO+L'LIT+L'DSOMODFY
          MVC   0(L'DSOMODFY,R4),DSOMODFY
          MVI   VARDATA,X'2C'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'DSO+L'LIT+L'DSOREPTA
          MVC   0(L'DSOREPTA,R4),DSOREPTA
          MVI   VARDATA,X'3C'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
 *
 * ...EXTENDED FIELD AND CHARACTER ATTRIBUTE TYPES
          MVC   VARNAME+L'STEM(L'TYP),TYP
@@ -420,39 +420,39 @@ RX3270IN HEADER VERSION='1.1',AUTHOR='DLC',DATE='(C)MAR04',            X
      LA R3,L'STEM+L'TYP+L'LIT+L'TYPRESET
          MVC   0(L'TYPRESET,R4),TYPRESET
          MVI   VARDATA,X'00'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'TYP+L'LIT+L'TYPFIELD
          MVC   0(L'TYPFIELD,R4),TYPFIELD
          MVI   VARDATA,X'C0'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'TYP+L'LIT+L'TYPVALDN
          MVC   0(L'TYPVALDN,R4),TYPVALDN
          MVI   VARDATA,X'C1'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'TYP+L'LIT+L'TYPOUTLN
          MVC   0(L'TYPOUTLN,R4),TYPOUTLN
          MVI   VARDATA,X'C2'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'TYP+L'LIT+L'TYPHILIT
          MVC   0(L'TYPHILIT,R4),TYPHILIT
          MVI   VARDATA,X'41'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'TYP+L'LIT+L'TYPCOLOR
          MVC   0(L'TYPCOLOR,R4),TYPCOLOR
          MVI   VARDATA,X'42'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'TYP+L'LIT+L'TYPPSYMB
          MVC   0(L'TYPPSYMB,R4),TYPPSYMB
          MVI   VARDATA,X'43'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'TYP+L'LIT+L'TYPBGCLR
          MVC   0(L'TYPBGCLR,R4),TYPBGCLR
          MVI   VARDATA,X'45'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'TYP+L'LIT+L'TYPTRANS
          MVC   0(L'TYPTRANS,R4),TYPTRANS
          MVI   VARDATA,X'46'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
 *
 * ...KEYBOARD ATTENTION IDENTIFIERS
          MVC   VARNAME+L'STEM(L'AID),AID
@@ -462,127 +462,127 @@ RX3270IN HEADER VERSION='1.1',AUTHOR='DLC',DATE='(C)MAR04',            X
      LA R3,L'STEM+L'AID+L'LIT+L'AIDNOAID
          MVC   0(L'AIDNOAID,R4),AIDNOAID
          MVI   VARDATA,X'60'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'AID+L'LIT+L'AIDPAK03
          MVC   0(L'AIDPAK03,R4),AIDPAK03
          MVI   VARDATA,X'6B'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'AID+L'LIT+L'AIDPAK01
          MVC   0(L'AIDPAK01,R4),AIDPAK01
          MVI   VARDATA,X'6C'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'AID+L'LIT+L'AIDCLEAR
          MVC   0(L'AIDCLEAR,R4),AIDCLEAR
          MVI   VARDATA,X'6D'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'AID+L'LIT+L'AIDPAK02
          MVC   0(L'AIDPAK02,R4),AIDPAK02
          MVI   VARDATA,X'6E'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'AID+L'LIT+L'AIDPFK01
          MVC   0(L'AIDPFK01,R4),AIDPFK01
          MVI   VARDATA,X'F1'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'AID+L'LIT+L'AIDPFK02
          MVC   0(L'AIDPFK02,R4),AIDPFK02
          MVI   VARDATA,X'F2'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'AID+L'LIT+L'AIDPFK03
          MVC   0(L'AIDPFK03,R4),AIDPFK03
          MVI   VARDATA,X'F3'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'AID+L'LIT+L'AIDPFK04
          MVC   0(L'AIDPFK04,R4),AIDPFK04
          MVI   VARDATA,X'F4'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'AID+L'LIT+L'AIDPFK05
          MVC   0(L'AIDPFK05,R4),AIDPFK05
          MVI   VARDATA,X'F5'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'AID+L'LIT+L'AIDPFK06
          MVC   0(L'AIDPFK06,R4),AIDPFK06
          MVI   VARDATA,X'F6'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'AID+L'LIT+L'AIDPFK07
          MVC   0(L'AIDPFK07,R4),AIDPFK07
          MVI   VARDATA,X'F7'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'AID+L'LIT+L'AIDPFK08
          MVC   0(L'AIDPFK08,R4),AIDPFK08
          MVI   VARDATA,X'F8'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'AID+L'LIT+L'AIDPFK09
          MVC   0(L'AIDPFK09,R4),AIDPFK09
          MVI   VARDATA,X'F9'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'AID+L'LIT+L'AIDPFK10
          MVC   0(L'AIDPFK10,R4),AIDPFK10
          MVI   VARDATA,X'7A'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'AID+L'LIT+L'AIDPFK11
          MVC   0(L'AIDPFK11,R4),AIDPFK11
          MVI   VARDATA,X'7B'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'AID+L'LIT+L'AIDPFK12
          MVC   0(L'AIDPFK12,R4),AIDPFK12
          MVI   VARDATA,X'7C'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'AID+L'LIT+L'AIDENTER
          MVC   0(L'AIDENTER,R4),AIDENTER
          MVI   VARDATA,X'7D'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'AID+L'LIT+L'AIDCURSR
          MVC   0(L'AIDCURSR,R4),AIDCURSR
          MVI   VARDATA,X'7E'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'AID+L'LIT+L'AIDPFK13
          MVC   0(L'AIDPFK13,R4),AIDPFK13
          MVI   VARDATA,X'C1'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'AID+L'LIT+L'AIDPFK14
          MVC   0(L'AIDPFK14,R4),AIDPFK14
          MVI   VARDATA,X'C2'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'AID+L'LIT+L'AIDPFK15
          MVC   0(L'AIDPFK15,R4),AIDPFK15
          MVI   VARDATA,X'C3'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'AID+L'LIT+L'AIDPFK16
          MVC   0(L'AIDPFK16,R4),AIDPFK16
          MVI   VARDATA,X'C4'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'AID+L'LIT+L'AIDPFK17
          MVC   0(L'AIDPFK17,R4),AIDPFK17
          MVI   VARDATA,X'C5'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'AID+L'LIT+L'AIDPFK18
          MVC   0(L'AIDPFK18,R4),AIDPFK18
          MVI   VARDATA,X'C6'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'AID+L'LIT+L'AIDPFK19
          MVC   0(L'AIDPFK19,R4),AIDPFK19
          MVI   VARDATA,X'C7'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'AID+L'LIT+L'AIDPFK20
          MVC   0(L'AIDPFK20,R4),AIDPFK20
          MVI   VARDATA,X'C8'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'AID+L'LIT+L'AIDPFK21
          MVC   0(L'AIDPFK21,R4),AIDPFK21
          MVI   VARDATA,X'C9'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'AID+L'LIT+L'AIDPFK22
          MVC   0(L'AIDPFK22,R4),AIDPFK22
          MVI   VARDATA,X'4A'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'AID+L'LIT+L'AIDPFK23
          MVC   0(L'AIDPFK23,R4),AIDPFK23
          MVI   VARDATA,X'4B'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'AID+L'LIT+L'AIDPFK24
          MVC   0(L'AIDPFK24,R4),AIDPFK24
          MVI   VARDATA,X'4C'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
 *
 * ...STANDARD FIELD ATTRIBUTES
          MVC   VARNAME+L'STEM(L'ATR),ATR
@@ -592,135 +592,135 @@ RX3270IN HEADER VERSION='1.1',AUTHOR='DLC',DATE='(C)MAR04',            X
      LA R3,L'STEM+L'ATR+L'LIT+L'ATRNOFLD
          MVC   0(L'ATRNOFLD,R4),ATRNOFLD
          MVI   VARDATA,X'00'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'ATR+L'LIT+L'ATRUNPRO
          MVC   0(L'ATRUNPRO,R4),ATRUNPRO
          MVI   VARDATA,X'40'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'ATR+L'LIT+L'ATRUNFST
          MVC   0(L'ATRUNFST,R4),ATRUNFST
          MVI   VARDATA,X'C1'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'ATR+L'LIT+L'ATRUNDET
          MVC   0(L'ATRUNDET,R4),ATRUNDET
          MVI   VARDATA,X'C4'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'ATR+L'LIT+L'ATRUNDTF
          MVC   0(L'ATRUNDTF,R4),ATRUNDTF
          MVI   VARDATA,X'C5'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'ATR+L'LIT+L'ATRUNBRT
          MVC   0(L'ATRUNBRT,R4),ATRUNBRT
          MVI   VARDATA,X'C8'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'ATR+L'LIT+L'ATRUNBRF
          MVC   0(L'ATRUNBRF,R4),ATRUNBRF
          MVI   VARDATA,X'C9'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'ATR+L'LIT+L'ATRUNDRK
          MVC   0(L'ATRUNDRK,R4),ATRUNDRK
          MVI   VARDATA,X'4C'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'ATR+L'LIT+L'ATRUNDKF
          MVC   0(L'ATRUNDKF,R4),ATRUNDKF
          MVI   VARDATA,X'4D'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'ATR+L'LIT+L'ATRUNNUM
          MVC   0(L'ATRUNNUM,R4),ATRUNNUM
          MVI   VARDATA,X'50'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'ATR+L'LIT+L'ATRUNNMF
          MVC   0(L'ATRUNNMF,R4),ATRUNNMF
          MVI   VARDATA,X'D1'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'ATR+L'LIT+L'ATRUNNMD
          MVC   0(L'ATRUNNMD,R4),ATRUNNMD
          MVI   VARDATA,X'D4'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'ATR+L'LIT+L'ATRUNNDF
          MVC   0(L'ATRUNNDF,R4),ATRUNNDF
          MVI   VARDATA,X'D5'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'ATR+L'LIT+L'ATRUNBRN
          MVC   0(L'ATRUNBRN,R4),ATRUNBRN
          MVI   VARDATA,X'D8'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'ATR+L'LIT+L'ATRUNBNF
          MVC   0(L'ATRUNBNF,R4),ATRUNBNF
          MVI   VARDATA,X'D9'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'ATR+L'LIT+L'ATRUNDKN
          MVC   0(L'ATRUNDKN,R4),ATRUNDKN
          MVI   VARDATA,X'5C'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'ATR+L'LIT+L'ATRUNDNF
          MVC   0(L'ATRUNDNF,R4),ATRUNDNF
          MVI   VARDATA,X'5D'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
     LA R3,L'STEM+L'ATR+L'LIT+L'ATRPROT
          MVC   0(L'ATRPROT,R4),ATRPROT
          MVI   VARDATA,X'60'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'ATR+L'LIT+L'ATRPRFST
          MVC   0(L'ATRPRFST,R4),ATRPRFST
          MVI   VARDATA,X'61'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'ATR+L'LIT+L'ATRPRDET
          MVC   0(L'ATRPRDET,R4),ATRPRDET
          MVI   VARDATA,X'E4'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'ATR+L'LIT+L'ATRPRDTF
          MVC   0(L'ATRPRDTF,R4),ATRPRDTF
          MVI   VARDATA,X'E5'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'ATR+L'LIT+L'ATRPRBRT
          MVC   0(L'ATRPRBRT,R4),ATRPRBRT
          MVI   VARDATA,X'E8'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'ATR+L'LIT+L'ATRPRBRF
          MVC   0(L'ATRPRBRF,R4),ATRPRBRF
          MVI   VARDATA,X'E9'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'ATR+L'LIT+L'ATRPRDRK
          MVC   0(L'ATRPRDRK,R4),ATRPRDRK
          MVI   VARDATA,X'6C'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'ATR+L'LIT+L'ATRPRDKF
          MVC   0(L'ATRPRDKF,R4),ATRPRDKF
          MVI   VARDATA,X'6D'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'ATR+L'LIT+L'ATRASKIP
          MVC   0(L'ATRASKIP,R4),ATRASKIP
          MVI   VARDATA,X'F0'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'ATR+L'LIT+L'ATRASFST
          MVC   0(L'ATRASFST,R4),ATRASFST
          MVI   VARDATA,X'F1'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'ATR+L'LIT+L'ATRASDET
          MVC   0(L'ATRASDET,R4),ATRASDET
          MVI   VARDATA,X'F4'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'ATR+L'LIT+L'ATRASDTF
          MVC   0(L'ATRASDTF,R4),ATRASDTF
          MVI   VARDATA,X'F5'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'ATR+L'LIT+L'ATRASBRT
          MVC   0(L'ATRASBRT,R4),ATRASBRT
          MVI   VARDATA,X'F8'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'ATR+L'LIT+L'ATRASBRF
          MVC   0(L'ATRASBRF,R4),ATRASBRF
          MVI   VARDATA,X'F9'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'ATR+L'LIT+L'ATRASDRK
          MVC   0(L'ATRASDRK,R4),ATRASDRK
          MVI   VARDATA,X'7C'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'ATR+L'LIT+L'ATRASDKF
          MVC   0(L'ATRASDKF,R4),ATRASDKF
          MVI   VARDATA,X'7D'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
 *
 * ...INSERT CURSOR LITERALS
          MVC   VARNAME+L'STEM(L'CSR),CSR
@@ -730,11 +730,11 @@ RX3270IN HEADER VERSION='1.1',AUTHOR='DLC',DATE='(C)MAR04',            X
   LA R3,L'STEM+L'CSR+L'LIT+L'CSRNO
          MVC   0(L'CSRNO,R4),CSRNO
          MVI   VARDATA,X'00'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
    LA R3,L'STEM+L'CSR+L'LIT+L'CSRYES
          MVC   0(L'CSRYES,R4),CSRYES
          MVI   VARDATA,X'13'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
 *
 * ...EXTENDED COLOR ATTRIBUTES
          MVC   VARNAME+L'STEM(L'EXC),EXC
@@ -744,39 +744,39 @@ RX3270IN HEADER VERSION='1.1',AUTHOR='DLC',DATE='(C)MAR04',            X
      LA R3,L'STEM+L'EXC+L'LIT+L'EXCDEFLT
          MVC   0(L'EXCDEFLT,R4),EXCDEFLT
          MVI   VARDATA,X'00'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
     LA R3,L'STEM+L'EXC+L'LIT+L'EXCBLUE
          MVC   0(L'EXCBLUE,R4),EXCBLUE
          MVI   VARDATA,X'F1'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
    LA R3,L'STEM+L'EXC+L'LIT+L'EXCRED
          MVC   0(L'EXCRED,R4),EXCRED
          MVI   VARDATA,X'F2'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
     LA R3,L'STEM+L'EXC+L'LIT+L'EXCPINK
          MVC   0(L'EXCPINK,R4),EXCPINK
          MVI   VARDATA,X'F3'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'EXC+L'LIT+L'EXCGREEN
          MVC   0(L'EXCGREEN,R4),EXCGREEN
          MVI   VARDATA,X'F4'
-         BAS   R5,SETVAR               CREATE THE ABBREVIATION
+         JAS   R5,SETVAR               CREATE THE ABBREVIATION
      LA R3,L'STEM+L'EXC+L'LIT+L'EXCTURQU-4
          MVC   0(L'EXCTURQU,R4),EXCTURQU
          MVI   VARDATA,X'F5'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'EXC+L'LIT+L'EXCTURQU
          MVC   0(L'EXCTURQU,R4),EXCTURQU
          MVI   VARDATA,X'F5'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'EXC+L'LIT+L'EXCYELLW
          MVC   0(L'EXCYELLW,R4),EXCYELLW
          MVI   VARDATA,X'F6'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'EXC+L'LIT+L'EXCWHITE
          MVC   0(L'EXCWHITE,R4),EXCWHITE
          MVI   VARDATA,X'F7'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
 *
 * ...EXTENDED HILITE ATTRIBUTES
          MVC   VARNAME+L'STEM(L'EXH),EXH
@@ -786,19 +786,19 @@ RX3270IN HEADER VERSION='1.1',AUTHOR='DLC',DATE='(C)MAR04',            X
    LA R3,L'STEM+L'EXH+L'LIT+L'EXHOFF
          MVC   0(L'EXHOFF,R4),EXHOFF
          MVI   VARDATA,X'00'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'EXH+L'LIT+L'EXHBLINK
          MVC   0(L'EXHBLINK,R4),EXHBLINK
          MVI   VARDATA,X'F1'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'EXH+L'LIT+L'EXHREVRS
          MVC   0(L'EXHREVRS,R4),EXHREVRS
          MVI   VARDATA,X'F2'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
      LA R3,L'STEM+L'EXH+L'LIT+L'EXHULINE
          MVC   0(L'EXHULINE,R4),EXHULINE
          MVI   VARDATA,X'F4'
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
 *
 * RETURN RESULT
 *
@@ -807,17 +807,17 @@ RETURN   XR    R5,R5                   CLEAR REG5 FOR ZERO "RC"
 * ------------------------------------------------------------------- *
 RETERR   LA    R3,EVALBLOCK_EVDATA     POINT TO "RESULT" AREA
          CVD   R15,PWORK8              CONVERT REG15 TO PACKED-DECIMAL
-         BAS   R15,PAK2ZON             CONVERT THAT TO ZONED-DECIMAL
+         JAS   R15,PAK2ZON             CONVERT THAT TO ZONED-DECIMAL
          ST    R2,EVALBLOCK_EVLEN      LENGTH OF CONVERTED RESULT
 *
          LA    R3,VARDATA              POINT TO VARIABLE DATA AREA
          CVD   R5,PWORK8               CONVERT REG5 TO PACKED-DECIMAL
-         BAS   R15,PAK2ZON             CONVERT THAT TO ZONED-DECIMAL
+         JAS   R15,PAK2ZON             CONVERT THAT TO ZONED-DECIMAL
          ST    R2,SHVVALL              LENGTH OF CONVERTED RESULT
 *
          LA    R3,2                    SET LENGTH OF VARIABLE NAME
          MVC   VARNAME+0(3),=C'RC '    SET VARIABLE NAME
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
 * ------------------------------------------------------------------- *
          XR    R15,R15                 CLEAR REG15 FOR RETURN CODE
 RETR15   TRAILER RETCODE=R15,SVAREA=SALEN
@@ -855,12 +855,12 @@ SETVAR   DS    0H
           IF   VARNAME(3),(NE,CLC),=C'RC '  IF NOT 'RC', REPORT ERRORS
            IF  R15,(NZ,LTR),R15          IF NON-ZERO RETURN CODE
             LA R5,8                       SET RESULT CODE
-            B  RETERR                     GO RETURN ERROR
+            J  RETERR                     GO RETURN ERROR
            ENDIF                         ENDIF
            IF  SHVRET,NE,SHVNEWV         IF NOT NEW VARIABLE
             IC R15,SHVRET                 SAVE ARXEXCOM CC
             LA R5,8                       SET RESULT CODE
-            B  RETERR                     GO RETURN ERROR
+            J  RETERR                     GO RETURN ERROR
            ENDIF                         ENDIF
           ENDIF                         ENDIF
          ENDIF                         ENDIF
@@ -868,6 +868,7 @@ SETVAR   DS    0H
          BR    R5
 * =================================================================== *
          EJECT
+DATA     LOCTR
 * =================================================================== *
 STORAGE  DS    0D
 * =================================================================== *

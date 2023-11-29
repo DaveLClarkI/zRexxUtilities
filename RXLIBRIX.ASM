@@ -96,7 +96,7 @@ RXLIBRIX HEADER VERSION='1.0',AUTHOR='DLC',DATE='(C)NOV23',            X
           MVI  VARDATA+0,C'-'           BUILD A
           MVC  VARDATA+1(79),VARDATA     LINE OF DASHES
           LHI  R3,80                      80 COLUMNS LONG
-          BAS  R5,SAYIT                 GO SAY IT
+          JAS  R5,SAYIT                 GO SAY IT
           LA   R4,INLCPARB              DIAGNOSTIC
           LA   R5,INLCLRTC+4              DUMP OF
           PDUMP (4),(5)                     LIBR PARAMETER BLOCK
@@ -114,29 +114,29 @@ RXLIBRIX HEADER VERSION='1.0',AUTHOR='DLC',DATE='(C)NOV23',            X
           MVC  0(L'IPTSTEMN,R4),IPTSTEMN  MOVE IN STEM NAME
           A    R4,IPTSTEML                POINT TO AFTER STEM NAME
           LA   R3,0(,R4)                POINT TO VARIABLE NAME AREA
-          BAS  R15,REG2ZON3             CONVERT THAT TO ZONED-DECIMAL
+          JAS  R15,REG2ZON3             CONVERT THAT TO ZONED-DECIMAL
           L    R3,IPTSTEML              COMPUTE LENGTH OF STEM NAME
           AR   R3,R2                     PLUS LENGTH OF COUNTER
-          BAS  R2,GETVAR                RETRIEVE THE VARIABLE VALUE
+          JAS  R2,GETVAR                RETRIEVE THE VARIABLE VALUE
           IF   R5,(NZ,LTR),R5,OR,       IF VARIABLE NOT FOUND          X
                SHVVALL,(NH,CLC),=F'0'   OR VALUE LENGTH NOT > ZERO
            LHI R5,-2                     SET INVALID STEM.n
            IF  R15,(Z,LTR),R15           IF ZERO RETURN CODE
             L  R15,IPTSTEMX               USER STEM INDEX AS RESULT
            ENDIF                         ENDIF
-           B   RETERR                    GO RETURN ERROR
+           J   RETERR                    GO RETURN ERROR
 IPTMOVE  MVC   IPTDATA(0),VARDATA        (SEE "EX" INSTRUCTION BELOW)
           ENDIF                         ENDIF
           L    R3,SHVVALL               GET VAR LENGTH
           SHI  R3,1                      MINUS 1 FOR EXECUTE
-          EX   R3,IPTMOVE               MOVE TO LIBR PARM
+          EXRL R3,IPTMOVE               MOVE TO LIBR PARM
          ENDIF                         ENDIF
 *
          IF    DEBUG_F,(ON,TF),$NOOP   IF DEBUG IS ON
           MVC  VARDATA+0(7),=C'SYSIPT:' LET'S SEE THE CARD INPUT
           MVC  VARDATA+8(L'IPTDATA),IPTDATA
           LHI  R3,IPTEND-IPTAREA        SET LENGTH OF CARD INPUT
-          BAS  R5,SAYIT                 GO SAY IT
+          JAS  R5,SAYIT                 GO SAY IT
          ENDIF                         END OF DEBUG TEST
 *
 * RETURN RESULT
@@ -178,7 +178,7 @@ REG2ZON3 DS    0H    CONVERT REG2 TO LEFT-SIGN, ZONED-DECIMAL AT REG3
           SR   R2,R1                   CALC NO. OF CHARS TO MOVE
          ENDIF
          BCTR  R2,0                    DECR. LEN FOR ZERO REF.
-         EX    R2,MVRSLT               MOVE VALUE TO RESULT AREA
+         EXRL  R2,MVRSLT               MOVE VALUE TO RESULT AREA
          LA    R2,1(,R2)               INCR. LEN FOR NORMAL REF.
 * ------------------------------------------------------------------- *
          BR    R15
@@ -196,7 +196,7 @@ SAYIT    DS    0H    USE REXX "SAY" TO DISPLAY MESSAGE
          BASR  R14,R15                 CALL ARXSAY
          IF    R15,(NZ,LTR),R15        IF NON-ZERO RETURN CODE
           LA   R5,8                      SET RESULT CODE
-          B    RETERR                    GO RETURN ERROR
+          J    RETERR                    GO RETURN ERROR
          ENDIF                         ENDIF
 * ------------------------------------------------------------------- *
          BR    R5
@@ -224,6 +224,7 @@ GETVAR   DS    0H    GET REXX VARIABLE VALUE
          BR    R2
 * =================================================================== *
          EJECT
+DATA     LOCTR
 * =================================================================== *
 STORAGE  DS    0D
 * ------------------------------------------------------------------- *

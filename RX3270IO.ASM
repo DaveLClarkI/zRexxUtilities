@@ -67,27 +67,27 @@ RX3270IO RMODE 24
 *     Exit 4;                                                         *
 *   End                                                               *
 *             /* define map fields: row,col */                        *
-*   n = RX3270FN(map._rows, map._cols, 3, 10); /* gen a field name */ *
-*   map.n.attrib = RX3270_ATR.LIT_ASKIP_NORM ||,                      *
-*                  RX3270_CSR.LIT_NO         ||,                      *
-*                  RX3270_EXC.LIT_GREEN      ||,                      *
-*                  RX3270_EXH.LIT_OFF          ;                      *
-*   map.n.output = 'Enter your name:';                                *
+*   fn = RX3270FN(map._rows, map._cols, 3, 10); /* gen field name */  *
+*   map.fn.attrib = RX3270_ATR.LIT_ASKIP_NORM ||,                     *
+*                   RX3270_CSR.LIT_NO         ||,                     *
+*                   RX3270_EXC.LIT_GREEN      ||,                     *
+*                   RX3270_EXH.LIT_OFF          ;                     *
+*   map.fn.output = 'Enter your name:';                               *
 *                                                                     *
-*   n = RX3270FN(map._rows, map._cols, 3, 27); /* gen a field name */ *
-*   map.n.attrib = RX3270_ATR.LIT_UNPROT_NORM||,                      *
-*                  RX3270_CSR.LIT_YES        ||,                      *
-*                  RX3270_EXC.LIT_YELLOW     ||,                      *
-*                  RX3270_EXH.LIT_UNDERLINE    ;                      *
-*   map.n.output = '';                                                *
-*   my_field = n;     /* save the name for your own reference */      *
+*   fn = RX3270FN(map._rows, map._cols, 3, 27); /* gen field name */  *
+*   map.fn.attrib = RX3270_ATR.LIT_UNPROT_NORM||,                     *
+*                   RX3270_CSR.LIT_YES        ||,                     *
+*                   RX3270_EXC.LIT_YELLOW     ||,                     *
+*                   RX3270_EXH.LIT_UNDERLINE    ;                     *
+*   map.fn.output = '';                                               *
+*   my_field = fn;        /* save the name for your own reference */  *
 *                                                                     *
-*   n = RX3270FN(map._rows, map._cols, 3, 58); /* gen a field name */ *
-*   map.n.attrib = RX3270_ATR.LIT_ASKIP_NORM ||,                      *
-*                  RX3270_CSR.LIT_NO         ||,                      *
-*                  RX3270_EXC.LIT_DEFAULT    ||,                      *
-*                  RX3270_EXH.LIT_OFF          ;                      *
-*   map.n.output = '';                                                *
+*   fn = RX3270FN(map._rows, map._cols, 3, 58); /* gen field name */  *
+*   map.fn.attrib = RX3270_ATR.LIT_ASKIP_NORM ||,                     *
+*                   RX3270_CSR.LIT_NO         ||,                     *
+*                   RX3270_EXC.LIT_DEFAULT    ||,                     *
+*                   RX3270_EXH.LIT_OFF          ;                     *
+*   map.fn.output = '';                                               *
 *                                                                     *
 *             /* begin I/O processing */                              *
 *   Do Until map.my_field.input <> ''                                 *
@@ -215,7 +215,9 @@ RX3270IO RMODE 24
 *          also, the failing REXX function's register 15 value        *
 *          is returned in the REXX "RESULT" special variable          *
 *   12   REXX environment not present                                 *
-*   14   3270 appendage routine not loaded                            *
+*   13   Unable to fix this routine in memory                         *
+*   14   Unable to load 3270 appendage routine                        *
+*   15   Unable to PFIX 3270 appendage routine                        *
 *   16   a device error occurred                                      *
 *          also, the device error code                                *
 *          is returned in the REXX "RESULT" special variable          *
@@ -250,8 +252,9 @@ SHVPARM1 DS    CL8                     'ARXEXCOM'
 SHVPARM2 DS    XL4
 SHVCTLB  DS    XL32                    STORAGE FOR SHV CONTROL BLOCK
 *
-BUFSZ    DS    F
-BUFEND   DS    F
+BUFSZ    DS    F                       3270 BUFFER SIZE FROM QUERY
+BUFEND   DS    F                       END OF DATA BFR, DUAL USE FLD
+BUFLENG  EQU   BUFEND,4                  REDEFINE BUFEND AS BUFLENG
 STEMLENG DS    F                       STEM NAME LENGTH
 STEMNAME DS    CL9                     STEM NAME
 OPT      DS    CL5                     FUNCTION CODE
@@ -261,6 +264,7 @@ TECBWAIT DF    B'01000000',QRYFLAG     USE TECB FOR CONTROLLED WAIT
 SET_81   DF    B'00100000',QRYFLAG     QUERY x'81' (USABLE AREA)
 SET_A6   DF    B'00010000',QRYFLAG     QUERY x'A6' (IMPLICIT PARTITION)
 SET_KLZ  DF    B'00001000',QRYFLAG     KEEP LEADING ZEROES
+DEBUG_F  DF    B'00000100',QRYFLAG     DEBUG FLAG
 SET_EXC  DF    B'00000010',QRYFLAG     EXTENDED COLOR
 SET_EXH  DF    B'00000001',QRYFLAG     EXTENDED HILITE
 *
@@ -302,8 +306,8 @@ R7       EQU   7
 R8       EQU   8
 R9       EQU   9                       REXX EXTERNAL ENTRY-POINT VECTOR
 R10      EQU   10                      SHARED VARIABLES CONTROL BLOCK
-R11      EQU   11                      RX3270IO CSECT BASE REG 1
-R12      EQU   12                      RX3270IO CSECT BASE REG 2
+R11      EQU   11                      RX3270IO CSECT BASE REG
+R12      EQU   12
 R13      EQU   13                      REGISTER SAVEAREA
 R14      EQU   14                      RETURN REG
 R15      EQU   15                      ENTRY REG
@@ -322,8 +326,8 @@ R15      EQU   15                      ENTRY REG
 * =================================================================== *
          EJECT
 * =================================================================== *
-RX3270IO HEADER VERSION='1.2',AUTHOR='DLC',DATE='(C)MAR04',            X
-               BASE=(R11,R12),SVAREA=SALEN   ALLOC GETVIS DYNAMIC STG
+RX3270IO HEADER VERSION=1.2,AUTHOR=DLC,DATE='(C)MAR04',                X
+               BASE=R11,SVAREA=SALEN   ALLOC GETVIS DYNAMIC STG
 * ------------------------------------------------------------------- *
          USING DYNASTOR,R13            POINT TO GETVIS DYNAMIC STORAGE
 *
@@ -334,7 +338,7 @@ RX3270IO HEADER VERSION='1.2',AUTHOR='DLC',DATE='(C)MAR04',            X
          IF    ENVBLOCK_ID,(NE,CLC),=C'ENVBLOCK'
           WTO  'RX3270IO: REQUIRES THE REXX ENVIRONMENT BLOCK'
           LA   R15,12                  SET ABNORMAL RETURN CODE
-          B    RETR15                  GO RETURN ERROR
+          J    RETR15                  GO RETURN ERROR
          ENDIF
          LR    R8,R1                   EXTERNAL FUNCTION PARAMETER LIST
          USING EFPL,R8                 ESTABLISH ADDRESSABILITY
@@ -399,8 +403,11 @@ RX3270IO HEADER VERSION='1.2',AUTHOR='DLC',DATE='(C)MAR04',            X
 *
 * RETRIEVE AND VALIDATE ARGUMENT(S)
 *
-         XC    OPT,OPT
          XC    STEMLENG,STEMLENG
+         XC    OPT,OPT
+*
+         XC    QRYFLAG,QRYFLAG         SET ALL BITS OFF
+*        SF    DEBUG_F                 TURN ON DEBUG
 *
          WHILE ARGTABLE_END,(NE,CLC),=XL8'FFFFFFFFFFFFFFFF'
 
@@ -423,12 +430,12 @@ RX3270IO HEADER VERSION='1.2',AUTHOR='DLC',DATE='(C)MAR04',            X
           AND  OPT,(NE,CLC),=C'WRITA'            FUNCTION
           AND  OPT,(NE,CLC),=C'WRITE'             CODES
            LA  R5,4                      SET RESULT CODE
-           B   RETERR                    GO RETURN ERROR
+           J   RETERR                    GO RETURN ERROR
           ENDIF                         ENDIF
          ELSE                          ELSE
           IF   STEMLENG,(NE,CLC),=F'0'  IF ALREADY GOT STEM ARG
            LA  R5,4                      SET RESULT CODE
-           B   RETERR                    GO RETURN ERROR
+           J   RETERR                    GO RETURN ERROR
           ENDIF                         ENDIF
           ST   R2,STEMLENG              SAVE STEM NAME LENGTH
           MVC  STEMNAME,0(R4)           SAVE STEM NAME
@@ -438,7 +445,7 @@ RX3270IO HEADER VERSION='1.2',AUTHOR='DLC',DATE='(C)MAR04',            X
           IF   STEMLENG,(H,CLC),=F'9',OR,  IF LEN > 9                  X
                0(R3),NE,C'.'            OR LAST CHAR NOT A PERIOD
            LA  R5,4                      SET RESULT CODE
-           B   RETERR                    GO RETURN ERROR
+           J   RETERR                    GO RETURN ERROR
           ENDIF                         ENDIF
          ENDIF                         ENDIF
 
@@ -454,7 +461,7 @@ RX3270IO HEADER VERSION='1.2',AUTHOR='DLC',DATE='(C)MAR04',            X
          IF    OPT,EQ,X'00',OR,        IF NO ARGS                      X
                STEMLENG,(EQ,CLC),=F'0' OR DON'T HAVE STEM ARG
           LA   R5,4                     SET RESULT CODE
-          B    RETERR                   GO RETURN ERROR
+          J    RETERR                   GO RETURN ERROR
          ENDIF                         ENDIF
 *
 * OUTPUT TO SYSLST -- ARXSAY
@@ -465,19 +472,32 @@ RX3270IO HEADER VERSION='1.2',AUTHOR='DLC',DATE='(C)MAR04',            X
          STM   R0,R2,SAYPARMB          PUT IN PARM BLOCK
          OI    SAYPLAST,X'80'          SET END OF PARM BLOCK
 *
-         MVC   SAYPARM1,=C'WRITE   '   SET PARM 1
+         MVC   SAYPARM1,=CL8'WRITE'    SET PARM 1
          LA    R0,VARDATA              GET ADDRESS FOR PARM 2
          LA    R1,L'VARDATA            GET LENGTH FOR PARM 3
          STM   R0,R1,SAYPARM2          PUT IN PARMS 2 AND 3
 *
-         IF    OPT,(EQ,CLC),=C'QUERY'  IF FUNCTION IS 'QUERY'
-          MVC  VARDATA+0(18),=C'RX3270IO Load at: '
+* FOR PERFORMANCE REASONS, KEEP THIS ROUTINE IN MEMORY
+*
+         IF    ENTRY_P,(EQ,CLC),=F'0'  IF FIRST TIME CALL
+          IF   DEBUG_F,(ON,TF),$NOOP    IF DEBUG IS ON
+*
+          MVC  VARDATA+0(18),=CL18'RX3270IO Load at: '
           ST   R11,AWORK4               STORE BASE ADDRESS
           UNPK EWORK8(9),AWORK4(5)      UNPACK BASE ADDRESS
           TR   EWORK8(8),TRTBL           AND TRANSLATE TO PRINTABLE
           MVC  VARDATA+18(8),EWORK8     THEN PUT IN MSG AREA
           LHI  R3,26                    SET LENGTH OF OUTPUT
-          BAS  R5,SAYIT                 GO SAY IT
+          JAS  R5,SAYIT                 GO SAY IT
+*
+          ENDIF                         END OF DEBUG TEST
+*
+          CDLOAD RX3270IO               MAKE THIS RTN STAY IN MEMORY
+          IF   R15,(NZ,LTR),R15         IF CDLOAD ERROR
+           LH  R5,=H'13'                 INDICATE LOAD FAILURE
+           J   RETERR                    GO RETURN ERROR
+          ENDIF                         ENDIF
+          ST   R1,ENTRY_P               SAVE RX3270IO ENTRY POINT       00033400
          ENDIF                         ENDIF
 *
 * SET STEM NAME PREFIX (FOR VARIABLE RETRIEVAL/CREATION)
@@ -486,21 +506,14 @@ RX3270IO HEADER VERSION='1.2',AUTHOR='DLC',DATE='(C)MAR04',            X
          MVC   0(L'STEMNAME,R4),STEMNAME  MOVE IN STEM NAME
          A     R4,STEMLENG                POINT TO AFTER STEM NAME
 *
-         XC    QRYFLAG,QRYFLAG          SET ALL BITS OFF
-*
 * LOAD APPENDAGE ROUTINE
 *
          IF    CARTNBEG,(EQ,CLC),=F'0' IF NOT YET LOADED...
           SAM24                         SWITCH TO 24-BIT MODE
-          CDLOAD RX3270IO               MAKE THIS RTN STAY IN MEMORY
-          IF   R15,(NZ,LTR),R15         IF CDLOAD ERROR
-           LH  R5,=H'13'                 INDICATE LOAD FAILURE
-           B   RETERR                    GO RETURN ERROR
-          ENDIF                         ENDIF
           CDLOAD RX3270AP,PAGE=YES      LOAD APPENDAGE ROUTINE
           IF   R15,(NZ,LTR),R15         IF CDLOAD ERROR
            LH  R5,=H'14'                 INDICATE APPENDAGE FAILURE
-           B   RETERR                    GO RETURN ERROR
+           J   RETERR                    GO RETURN ERROR
           ENDIF                         ENDIF
           ST   R1,CARTNEP               SAVE ENTRY POINT
           ST   R0,CARTNBEG              SAVE LOAD POINT
@@ -511,7 +524,7 @@ RX3270IO HEADER VERSION='1.2',AUTHOR='DLC',DATE='(C)MAR04',            X
           IF   R15,(NZ,LTR),R15         IF PFIX ERROR
            PDUMP CARTNBEG,CARTNFLG+3     DUMP PARM BLOCK
            LH  R5,=H'15'                 INDICATE APPENDAGE FAILURE
-           B   RETERR                    GO RETURN ERROR
+           J   RETERR                    GO RETURN ERROR
           ENDIF                         ENDIF
           SAM31                         SWITCH TO 31-BIT MODE
           L    R1,=XL4'FF000000'        REQUEST KEY 0 STATE
@@ -535,11 +548,11 @@ RX3270IO HEADER VERSION='1.2',AUTHOR='DLC',DATE='(C)MAR04',            X
          MVC   0(L'DEVLUN,R4),DEVLUN   ADD QUALIFIER TO STEM NAME
          L     R3,STEMLENG             COMPUTE LENGTH OF STEM NAME
          LA    R3,L'DEVLUN(,R3)        PLUS LENGTH OF QUALIFIER
-         BAS   R2,GETVAR               RETRIEVE THE VARIABLE VALUE
+         JAS   R2,GETVAR               RETRIEVE THE VARIABLE VALUE
          IF    R5,(NZ,LTR),R5,OR,      IF VARIABLE NOT FOUND           X
                SHVVALL,(NE,CLC),=F'1'  OR VALUE LENGTH NOT = 1
           LH   R5,=H'-1'                INDICATE INVALID STEM._LUN
-          B    RETERR                   GO RETURN ERROR
+          J    RETERR                   GO RETURN ERROR
          ENDIF                         ENDIF
          MVI   MYCCB+6,X'01'           UNIT CLASS (SYS000)
          MVC   MYCCB+7(1),VARDATA      PUT LGL UNIT NUMBER IN CCB
@@ -549,7 +562,7 @@ RX3270IO HEADER VERSION='1.2',AUTHOR='DLC',DATE='(C)MAR04',            X
          EXTRACT ID=PUB,SEL=(S,MYCCB+6),AREA=(S,MYPUB),LEN=L'MYPUB
          IF    R15,(NZ,LTR),R15        IF BAD RETURN CODE
           LA   R5,8                     SET RESULT CODE
-          B    RETERR                   GO RETURN ERROR
+          J    RETERR                   GO RETURN ERROR
          ENDIF                         ENDIF
 *
          LA    R6,MYPUB                ESTABLISH
@@ -557,7 +570,7 @@ RX3270IO HEADER VERSION='1.2',AUTHOR='DLC',DATE='(C)MAR04',            X
          IF    IJBPDEVT,NE,T3277,AND,  IF NOT 3277                     X
                IJBPDEVT,NE,T3270       AND NOT 3270
           LH   R5,=H'-2'                INDICATE NON-3270 STEM._LUN
-          B    RETERR                   GO RETURN ERROR
+          J    RETERR                   GO RETURN ERROR
          ENDIF                         ENDIF
          DROP  R6
 *
@@ -570,11 +583,11 @@ RX3270IO HEADER VERSION='1.2',AUTHOR='DLC',DATE='(C)MAR04',            X
           MVC  0(L'DEVQRY,R4),DEVQRY    ADD QUALIFIER TO STEM NAME
           L    R3,STEMLENG              COMPUTE LENGTH OF STEM NAME
           LA   R3,L'DEVQRY(,R3)         PLUS LENGTH OF QUALIFIER
-          BAS  R2,GETVAR                RETRIEVE THE VARIABLE VALUE
+          JAS  R2,GETVAR                RETRIEVE THE VARIABLE VALUE
           IF   R5,(NZ,LTR),R5,OR,       IF VARIABLE NOT FOUND          X
                VARDATA,NE,C'1'          OR QUERY VALUE NOT = '1'
            LH  R5,=H'-3'                 INDICATE INVALID STEM._QRY
-           B   RETERR                    GO RETURN ERROR
+           J   RETERR                    GO RETURN ERROR
           ENDIF                         ENDIF
 *
          ENDIF                         ENDIF
@@ -592,13 +605,13 @@ RX3270IO HEADER VERSION='1.2',AUTHOR='DLC',DATE='(C)MAR04',            X
           MVC  0(L'RAWOUT,R4),RAWOUT    ADD QUALIFIER TO STEM NAME
           L    R3,STEMLENG              COMPUTE LENGTH OF STEM NAME
           LA   R3,L'RAWOUT(,R3)         PLUS LENGTH OF QUALIFIER
-          BAS  R2,GETVAR                RETRIEVE THE VARIABLE VALUE
+          JAS  R2,GETVAR                RETRIEVE THE VARIABLE VALUE
           IF   R5,(NZ,LTR),R5,OR,       IF VARIABLE NOT FOUND          X
                SHVVALL,(NH,CLC),=F'1'   OR VALUE LENGTH NOT > 1
            LH  R5,=H'-4'                 INDICATE INVALID STEM._CCC
-           B   RETERR                    GO RETURN ERROR
+           J   RETERR                    GO RETURN ERROR
           ENDIF                         ENDIF
-          MVC  BUFEND,SHVVALL           SAVE LENGTH OF USER DATA
+          MVC  BUFLENG,SHVVALL          SAVE LENGTH OF USER DATA
           LA   R2,VARDATA               GET ADDRESS FOR SHVVALA
           LA   R3,L'VARDATA             GET LENGTH  FOR SHVVALL
           STM  R2,R3,SHVVALA            PUT IN SHV CONTROL BLOCK
@@ -638,7 +651,7 @@ RX3270IO HEADER VERSION='1.2',AUTHOR='DLC',DATE='(C)MAR04',            X
            MVC MYCCW+0(1),LCLWRITE      PERFORM WRITE
           ELSE                         ELSE
            MVC MYCCW+0(1),USRCCC        PUT CHANNEL COMMAND IN CCW
-           L   R0,BUFEND                GET LEN OF USER DATA
+           L   R0,BUFLENG               GET LEN OF USER DATA
            BCTR R0,0                     MINUS 1 FOR CCC
            STH R0,MYCCW+6               AND STORE IN CCW
           ENDIF                        ENDIF
@@ -659,11 +672,11 @@ RX3270IO HEADER VERSION='1.2',AUTHOR='DLC',DATE='(C)MAR04',            X
           MVC  0(L'DEVWCC,R4),DEVWCC    ADD QUALIFIER TO STEM NAME
           L    R3,STEMLENG              COMPUTE LENGTH OF STEM NAME
           LA   R3,L'DEVWCC(,R3)         PLUS LENGTH OF QUALIFIER
-          BAS  R2,GETVAR                RETRIEVE THE VARIABLE VALUE
+          JAS  R2,GETVAR                RETRIEVE THE VARIABLE VALUE
           IF   R5,(NZ,LTR),R5,OR,       IF VARIABLE NOT FOUND          X
                SHVVALL,(NE,CLC),=F'1'   OR VALUE LENGTH NOT = 1
            LH  R5,=H'-4'                 INDICATE INVALID STEM._WCC
-           B   RETERR                    GO RETURN ERROR
+           J   RETERR                    GO RETURN ERROR
           ENDIF                         ENDIF
           MVC  SCRBUF(1),VARDATA        PUT WCC IN BUFFER
 *
@@ -682,15 +695,15 @@ RX3270IO HEADER VERSION='1.2',AUTHOR='DLC',DATE='(C)MAR04',            X
            ENDIF                         ENDIF
            L   R3,STEMLENG               COMPUTE LENGTH OF STEM NAME
            LA  R3,L'DEVBSZ(,R3)          PLUS LENGTH OF QUALIFIER
-           BAS R2,GETVAR                 RETRIEVE THE VARIABLE VALUE
+           JAS R2,GETVAR                 RETRIEVE THE VARIABLE VALUE
            IF  R5,(NZ,LTR),R5,OR,        IF VARIABLE NOT FOUND         X
                SHVVALL,(NE,CLC),=F'4'    OR VALUE LENGTH NOT = 4
             LH R5,=H'-5'                  INDICATE INVALID STEM._BUFSZ
-            B  RETERR                     GO RETURN ERROR
+            J  RETERR                     GO RETURN ERROR
            ENDIF                         ENDIF
            LA  R2,VARDATA                POINT TO VARIABLE DATA
            L   R3,SHVVALL                GET LENGTH OF VARIABLE DATA
-           BAS R15,ZON2REG3              CONVERT THAT TO BINARY IN R3
+           JAS R15,ZON2REG3              CONVERT THAT TO BINARY IN R3
            BCTR R3,0                     DECREMENT FOR ZERO OFFSET
            ST  R3,BUFSZ                   AND SAVE THE RESULT
 *
@@ -698,11 +711,11 @@ RX3270IO HEADER VERSION='1.2',AUTHOR='DLC',DATE='(C)MAR04',            X
            MVC 0(L'DEVEXC,R4),DEVEXC     ADD QUALIFIER TO STEM NAME
            L   R3,STEMLENG               COMPUTE LENGTH OF STEM NAME
            LA  R3,L'DEVEXC(,R3)          PLUS LENGTH OF QUALIFIER
-           BAS R2,GETVAR                 RETRIEVE THE VARIABLE VALUE
+           JAS R2,GETVAR                 RETRIEVE THE VARIABLE VALUE
            IF  R5,(NZ,LTR),R5,OR,        IF VARIABLE NOT FOUND         X
                SHVVALL,(NE,CLC),=F'1'    OR VALUE LENGTH NOT = 1
             LH R5,=H'-6'                  INDICATE INVALID STEM._EXC
-            B  RETERR                     GO RETURN ERROR
+            J  RETERR                     GO RETURN ERROR
            ENDIF                         ENDIF
            IF  VARDATA,EQ,C'1'           IF EXTENDED COLOR SUPPORTED
             SF SET_EXC                    INDICATE EXT. COLOR SUPPORT
@@ -712,11 +725,11 @@ RX3270IO HEADER VERSION='1.2',AUTHOR='DLC',DATE='(C)MAR04',            X
            MVC 0(L'DEVEXH,R4),DEVEXH     ADD QUALIFIER TO STEM NAME
            L   R3,STEMLENG               COMPUTE LENGTH OF STEM NAME
            LA  R3,L'DEVEXH(,R3)          PLUS LENGTH OF QUALIFIER
-           BAS R2,GETVAR                 RETRIEVE THE VARIABLE VALUE
+           JAS R2,GETVAR                 RETRIEVE THE VARIABLE VALUE
            IF  R5,(NZ,LTR),R5,OR,        IF VARIABLE NOT FOUND         X
                SHVVALL,(NE,CLC),=F'1'    OR VALUE LENGTH NOT = 1
             LH R5,=H'-7'                  INDICATE INVALID STEM._EXH
-            B  RETERR                     GO RETURN ERROR
+            J  RETERR                     GO RETURN ERROR
            ENDIF                         ENDIF
            IF  VARDATA,EQ,C'1'           IF EXTENDED HILITE SUPPORTED
             SF SET_EXH                    INDICATE EXT. HILITE SUPPORT
@@ -732,12 +745,12 @@ RX3270IO HEADER VERSION='1.2',AUTHOR='DLC',DATE='(C)MAR04',            X
            WHILE R8,(LT,C),BUFSZ        LOOP WITHIN BUFFER SIZE
             LR  R2,R8                    COPY COUNTER TO REG2
             LA  R3,2(,R4)                POINT TO VARIABLE NAME AREA
-            BAS R15,REG2ZON3             CONVERT THAT TO ZONED-DECIMAL
+            JAS R15,REG2ZON3             CONVERT THAT TO ZONED-DECIMAL
             MVC 6(L'FLDATR,R4),FLDATR    ADD QUALIFIER TO FIELD NAME
             L   R3,STEMLENG              COMPUTE LENGTH OF STEM NAME
             LA  R3,6(,R3)                 PLUS LENGTH OF FIELD NAME
             LA  R3,L'FLDATR(,R3)          PLUS LENGTH OF QUALIFIER
-            BAS R2,GETVAR                RETRIEVE THE VARIABLE VALUE
+            JAS R2,GETVAR                RETRIEVE THE VARIABLE VALUE
             IF  R5,(NZ,LTR),R5,OR,       IF VARIABLE NOT FOUND         X
                SHVVALL,(NE,CLC),=F'4'    OR VALUE LENGTH NOT = 4
              IF SHVRET,EQ,SHVNEWV,OR,     IF NEW VARIABLE              X
@@ -746,7 +759,7 @@ RX3270IO HEADER VERSION='1.2',AUTHOR='DLC',DATE='(C)MAR04',            X
               WLOOP                        LOOP
              ENDIF                        ENDIF
              LH R5,=H'-8'                 SET INVALID STEM.N.ATTRIB
-             B  RETERR                    GO RETURN ERROR
+             J  RETERR                    GO RETURN ERROR
             ENDIF                        ENDIF
 
             MVC 0(L'SCRSETBA,R6),SCRSETBA  PUT ORD IN SCREEN BUFFER
@@ -766,7 +779,7 @@ RX3270IO HEADER VERSION='1.2',AUTHOR='DLC',DATE='(C)MAR04',            X
              IF VARDATA+0,EQ,X'00'        IF NO FIELD ATTRIBUTE
               IF VARDATA+2,EQ,X'00',AND,VARDATA+3,EQ,X'00'
                MVC 0(L'SCRSETAC,R6),SCRSETAC PUT ORD IN SCREEN BUFFER
-               MVC 1(2,R6),=x'0000'          PUT ALL IN SCREEN BUFFER
+               MVC 1(2,R6),=X'0000'          PUT ALL IN SCREEN BUFFER
                LA R6,L'SCRSETAC(,R6)         ADD TO BUFFER POINTER
                LA R7,L'SCRSETAC(,R7)          AND TO BUFFER LENGTH
               ELSE
@@ -799,7 +812,7 @@ RX3270IO HEADER VERSION='1.2',AUTHOR='DLC',DATE='(C)MAR04',            X
             L   R3,STEMLENG              COMPUTE LENGTH OF STEM NAME
             LA  R3,6(,R3)                 PLUS LENGTH OF FIELD NAME
             LA  R3,L'FLDOUT(,R3)          PLUS LENGTH OF QUALIFIER
-            BAS R2,GETVAR                RETRIEVE THE VARIABLE VALUE
+            JAS R2,GETVAR                RETRIEVE THE VARIABLE VALUE
             IF  R5,(NZ,LTR),R5,OR,       IF VARIABLE NOT FOUND         X
                SHVVALL,(EQ,CLC),=F'0'    OR VALUE LENGTH = 0
              IF SHVRET,EQ,SHVNEWV,OR,     IF NEW VARIABLE              X
@@ -808,13 +821,13 @@ RX3270IO HEADER VERSION='1.2',AUTHOR='DLC',DATE='(C)MAR04',            X
               WLOOP                        LOOP
              ENDIF                        ENDIF
              LH R5,=H'-9'                 SET INVALID STEM.N.OUTPUT
-             B  RETERR                    GO RETURN ERROR
+             J  RETERR                    GO RETURN ERROR
 MV2FLD   MVC   0(0,R6),VARDATA    (SEE "EX" INSTRUCTION BELOW)
             ENDIF                        ENDIF
 
             L   R3,SHVVALL               GET LENGTH OF OUTPUT DATA
             BCTR R3,0                    DECR. FOR ZERO OFFSET
-            EX  R3,MV2FLD                MOVE TO SCREEN BUFFER
+            EXRL R3,MV2FLD               MOVE TO SCREEN BUFFER
             LA  R3,1(,R3)                INCR. FOR NORMAL OFFSET
             AR  R6,R3                    ADD TO BUFFER POINTER
             AR  R7,R3                     AND TO BUFFER LENGTH
@@ -823,7 +836,7 @@ MV2FLD   MVC   0(0,R6),VARDATA    (SEE "EX" INSTRUCTION BELOW)
 *              R7,(HT,C),BUFSZ,OR,       OR R7 > DEVICE BUFER
              LR R15,R7                    RETURN SIZE TO CALLER
              LH R5,=H'-16'                INDICATE BUFFER OVERFLOW
-             B  RETERR                    GO RETURN ERROR
+             J  RETERR                    GO RETURN ERROR
             ENDIF                        ENDIF
 
             LA R8,1(,R8)                 NEXT FIELD
@@ -850,7 +863,7 @@ MV2FLD   MVC   0(0,R6),VARDATA    (SEE "EX" INSTRUCTION BELOW)
           LA   R5,14                    SET RC VALUE
           XR   R15,R15                  CLEAR REGISTER
           ICM  R15,B'0011',MYCCB+4      SET RESULT VALUE
-          B    RETERR                   GO RETURN ERROR
+          J    RETERR                   GO RETURN ERROR
          ENDIF                         ENDIF
 *
          ENDIF                         END ALL WRITE-TYPE PROCESSING
@@ -883,7 +896,7 @@ MV2FLD   MVC   0(0,R6),VARDATA    (SEE "EX" INSTRUCTION BELOW)
            LA  R5,14                     SET RC VALUE
            XR  R15,R15                   CLEAR REGISTER
            ICM R15,B'0011',MYCCB+4       SET RESULT VALUE
-           B   RETERR                    GO RETURN ERROR
+           J   RETERR                    GO RETURN ERROR
           ENDIF                         ENDIF
           CF   CCBQUEUE                 CLEAR QUEUED FLAG
 *
@@ -907,7 +920,7 @@ MV2FLD   MVC   0(0,R6),VARDATA    (SEE "EX" INSTRUCTION BELOW)
            LA  R5,16                     SET RC VALUE
            XR  R15,R15                   CLEAR REGISTER
            ICM R15,B'0011',MYCCB+4       SET RESULT VALUE
-           B   RETERR                    GO RETURN ERROR
+           J   RETERR                    GO RETURN ERROR
           ENDIF                         ENDIF
           IF   OPT,(NE,CLC),=C'READQ'   IF NOT READ-QUERY
             WEXIT                        EXIT WHILE LOOP
@@ -929,11 +942,11 @@ MV2FLD   MVC   0(0,R6),VARDATA    (SEE "EX" INSTRUCTION BELOW)
          LH    R3,MYCCW+6              CALCULATE LENGTH
          SH    R3,MYCCB+0               OF THE 3270 DATA READ
          STM   R2,R3,SHVVALA           PUT IN SHV CONTROL BLOCK
-         ST    R3,BUFEND               SAVE BUFFER LENGTH
+         ST    R3,BUFLENG              SAVE BUFFER LENGTH
          L     R3,STEMLENG             COMPUTE LENGTH OF STEM NAME
          LA    R3,L'RAWINP(,R3)        PLUS LENGTH OF QUALIFIER
          MVC   0(L'RAWINP,R4),RAWINP   ADD QUALIFIER TO STEM NAME
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
          LA    R2,VARDATA              POINT BACK TO VAR DATA AREA
          ST    R2,SHVVALA              PUT IN SHV CONTROL BLOCK
 *
@@ -943,21 +956,21 @@ MV2FLD   MVC   0(0,R6),VARDATA    (SEE "EX" INSTRUCTION BELOW)
          L     R3,STEMLENG             COMPUTE LENGTH OF STEM NAME
          LA    R3,L'KYBAID(,R3)        PLUS LENGTH OF QUALIFIER
          MVC   0(L'KYBAID,R4),KYBAID   ADD QUALIFIER TO STEM NAME
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
 *
          IF    SCRBUF,EQ,X'88'         IF A STRUCTURED FIELD AID
           LA   R2,0                     NO CURSOR POSITION
          ELSE                          ELSE
           LA   R2,SCRBUF+1              POINT TO CURSOR POSITION
-          BAS  R5,BUFADR                TRANSLATE 12-BIT TO 14-BIT ADR
+          JAS  R5,BUFADR                TRANSLATE 12-BIT TO 14-BIT ADR
          ENDIF                         ENDIF
          LA    R3,VARDATA              POINT TO VARIABLE DATA AREA
-         BAS   R15,REG2ZON3            CONVERT THAT TO ZONED-DECIMAL
+         JAS   R15,REG2ZON3            CONVERT THAT TO ZONED-DECIMAL
          ST    R2,SHVVALL              LENGTH OF CONVERTED RESULT
          L     R3,STEMLENG             COMPUTE LENGTH OF STEM NAME
          LA    R3,L'SCRCSR(,R3)        PLUS LENGTH OF QUALIFIER
          MVC   0(L'SCRCSR,R4),SCRCSR   ADD QUALIFIER TO STEM NAME
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
 *
 * PARSE 3270 BUFFER INPUT FOR FIELD INFORMATION
 *
@@ -968,7 +981,7 @@ MV2FLD   MVC   0(0,R6),VARDATA    (SEE "EX" INSTRUCTION BELOW)
           SF   SET_KLZ                  REG2ZON3 KEEP LEADING ZEROES
           MVC  0(2,R4),=C'FN'           ADD QUALIFIER TO STEM NAME
           LA   R7,SCRBUF                BEGINNING OF BUFFER
-          A    R7,BUFEND                 PLUS BUFFER LENGTH
+          A    R7,BUFLENG                PLUS BUFFER LENGTH
           ST   R7,BUFEND                  EQUALS ENDING POSITION
           LA   R7,SCRBUF+3              POINT TO FIRST FIELD POSITION
 *
@@ -996,22 +1009,22 @@ MV2FLD   MVC   0(0,R6),VARDATA    (SEE "EX" INSTRUCTION BELOW)
            LR  R6,R1                     COPY LENGTH  FOR SHVVALL
            IF  R6,(HT,CH),=H'256'        IF GREATER THAN 256
             LH R5,=H'-9'                  INDICATE INVALID LENGTH
-            B  RETERR                     GO RETURN ERROR
+            J  RETERR                     GO RETURN ERROR
 FNDSBA      TRT 0(0,R6),TRTBL            (SEE "EX" INSTRUCTION ABOVE)
            ENDIF                         ENDIF
            STM R5,R6,SHVVALA             PUT IN SHV CONTROL BLOCK
 *
 * ...store the current field's data in a REXX variable...
            LA  R2,1(,R7)                 POINT TO BUFFER POSITION
-           BAS R5,BUFADR                 TRANSLATE 12-BIT TO 14-BIT ADR
+           JAS R5,BUFADR                 TRANSLATE 12-BIT TO 14-BIT ADR
            BCTR R2,0                     DECREMENT BY ONE
            LA  R3,2(,R4)                 POINT TO VARIABLE NAME AREA
-           BAS R15,REG2ZON3              CONVERT THAT TO ZONED-DECIMAL
+           JAS R15,REG2ZON3              CONVERT THAT TO ZONED-DECIMAL
            MVC 6(L'FLDINP,R4),FLDINP     ADD QUALIFIER TO FIELD NAME
            L   R3,STEMLENG               COMPUTE LENGTH OF STEM NAME
            LA  R3,6(,R3)                  PLUS LENGTH OF FIELD NAME
            LA  R3,L'FLDINP(,R3)           PLUS LENGTH OF QUALIFIER
-           BAS R5,SETVAR                 CREATE THE VARIABLE
+           JAS R5,SETVAR                 CREATE THE VARIABLE
 *
            LA  R7,3(,R7)                 INCR. FOR SBA ORDER + BUF ADDR
            AR  R7,R6                     POINT TO NEXT SBA ORDER
@@ -1021,17 +1034,18 @@ FNDSBA      TRT 0(0,R6),TRTBL            (SEE "EX" INSTRUCTION ABOVE)
          ENDIF                         END OF 'READM' PROCESSING
 *
          IF    OPT,(EQ,CLC),=C'READQ'  FOR 'READQ' ONLY
+*
           MVI  VARDATA,C'1'             INDICATE QUERY HAS BEEN DONE
           LA   R2,1                     SET LENGTH OF DATA VALUE
           ST   R2,SHVVALL                AND PUT IN CONTROL BLOCK
           L    R3,STEMLENG              COMPUTE LENGTH OF STEM NAME
           LA   R3,L'DEVQRY(,R3)         PLUS LENGTH OF QUALIFIER
           MVC  0(L'DEVQRY,R4),DEVQRY    ADD QUALIFIER TO STEM NAME
-          BAS  R5,SETVAR                CREATE THE VARIABLE
+          JAS  R5,SETVAR                CREATE THE VARIABLE
 *
           LA   R6,SCRBUF+1              POINT AT 2ND BYTE OF INPUT
           LA   R7,SCRBUF-1              CALCULATE THE ENDING ADDRESS
-          A    R7,BUFEND                  OF THE QUERY INPUT
+          A    R7,BUFLENG                 OF THE QUERY INPUT
 *
           WHILE R6,(LT,CR),R7           LOOP UNTIL POINTER => EOD
 *
@@ -1050,34 +1064,34 @@ FNDSBA      TRT 0(0,R6),TRTBL            (SEE "EX" INSTRUCTION ABOVE)
            L   R3,STEMLENG              COMPUTE LENGTH OF STEM NAME
            LA  R3,L'DEVTYP(,R3)         PLUS LENGTH OF QUALIFIER
            MVC 0(L'DEVTYP,R4),DEVTYP    ADD QUALIFIER TO STEM NAME
-           BAS R5,SETVAR                CREATE THE VARIABLE
+           JAS R5,SETVAR                CREATE THE VARIABLE
 
            LH  R2,6(,R6)                COLS (DEF)
            LA  R3,VARDATA               POINT TO VARIABLE DATA AREA
-           BAS R15,REG2ZON3             CONVERT THAT TO ZONED-DECIMAL
+           JAS R15,REG2ZON3             CONVERT THAT TO ZONED-DECIMAL
            ST  R2,SHVVALL               LENGTH OF CONVERTED RESULT
            L   R3,STEMLENG              COMPUTE LENGTH OF STEM NAME
            LA  R3,L'DEVWDT(,R3)         PLUS LENGTH OF QUALIFIER
            MVC 0(L'DEVWDT,R4),DEVWDT    ADD QUALIFIER TO STEM NAME
-           BAS R5,SETVAR                CREATE THE VARIABLE
+           JAS R5,SETVAR                CREATE THE VARIABLE
 
            LH  R2,8(,R6)                ROWS (DEF)
            LA  R3,VARDATA               POINT TO VARIABLE DATA AREA
-           BAS R15,REG2ZON3             CONVERT THAT TO ZONED-DECIMAL
+           JAS R15,REG2ZON3             CONVERT THAT TO ZONED-DECIMAL
            ST  R2,SHVVALL               LENGTH OF CONVERTED RESULT
            L   R3,STEMLENG              COMPUTE LENGTH OF STEM NAME
            LA  R3,L'DEVHGT(,R3)         PLUS LENGTH OF QUALIFIER
            MVC 0(L'DEVHGT,R4),DEVHGT    ADD QUALIFIER TO STEM NAME
-           BAS R5,SETVAR                CREATE THE VARIABLE
+           JAS R5,SETVAR                CREATE THE VARIABLE
 
            LH  R2,21(,R6)               BUFSZ (DEF)
            LA  R3,VARDATA               POINT TO VARIABLE DATA AREA
-           BAS R15,REG2ZON3             CONVERT THAT TO ZONED-DECIMAL
+           JAS R15,REG2ZON3             CONVERT THAT TO ZONED-DECIMAL
            ST  R2,SHVVALL               LENGTH OF CONVERTED RESULT
            L   R3,STEMLENG              COMPUTE LENGTH OF STEM NAME
            LA  R3,L'DEVBSZ(,R3)         PLUS LENGTH OF QUALIFIER
            MVC 0(L'DEVBSZ,R4),DEVBSZ    ADD QUALIFIER TO STEM NAME
-           BAS R5,SETVAR                CREATE THE VARIABLE
+           JAS R5,SETVAR                CREATE THE VARIABLE
 
            IF  SET_A6,(NOT,TF),$NOOP     IF NO X'A6' QUERY REPLY YET
             MVI VARDATA,C'0'             ROWS (ALT)
@@ -1086,21 +1100,21 @@ FNDSBA      TRT 0(0,R6),TRTBL            (SEE "EX" INSTRUCTION ABOVE)
             L   R3,STEMLENG              COMPUTE LENGTH OF STEM NAME
             LA  R3,L'DEVHGA(,R3)         PLUS LENGTH OF QUALIFIER
             MVC 0(L'DEVHGA,R4),DEVHGA    ADD QUALIFIER TO STEM NAME
-            BAS R5,SETVAR                CREATE THE VARIABLE
+            JAS R5,SETVAR                CREATE THE VARIABLE
             MVI VARDATA,C'0'             COLS (ALT)
             LA  R2,1                     SET LENGTH OF DATA VALUE
             ST  R2,SHVVALL                AND PUT IN CONTROL BLOCK
             L   R3,STEMLENG              COMPUTE LENGTH OF STEM NAME
             LA  R3,L'DEVWDA(,R3)         PLUS LENGTH OF QUALIFIER
             MVC 0(L'DEVWDA,R4),DEVWDA    ADD QUALIFIER TO STEM NAME
-            BAS R5,SETVAR                CREATE THE VARIABLE
+            JAS R5,SETVAR                CREATE THE VARIABLE
             MVI VARDATA,C'0'             BUFSZ (ALT)
             LA  R2,1                     SET LENGTH OF DATA VALUE
             ST  R2,SHVVALL                AND PUT IN CONTROL BLOCK
             L   R3,STEMLENG              COMPUTE LENGTH OF STEM NAME
             LA  R3,L'DEVBSA(,R3)         PLUS LENGTH OF QUALIFIER
             MVC 0(L'DEVBSA,R4),DEVBSA    ADD QUALIFIER TO STEM NAME
-            BAS R5,SETVAR                CREATE THE VARIABLE
+            JAS R5,SETVAR                CREATE THE VARIABLE
            ENDIF                        ENDIF
 *
           WHEN 3(1,R6),(EQ,CLC),QRY_A6  IMPLICIT PARTITION QUERY REPLY
@@ -1114,39 +1128,39 @@ FNDSBA      TRT 0(0,R6),TRTBL            (SEE "EX" INSTRUCTION ABOVE)
             L   R3,STEMLENG              COMPUTE LENGTH OF STEM NAME
             LA  R3,L'DEVTYP(,R3)         PLUS LENGTH OF QUALIFIER
             MVC 0(L'DEVTYP,R4),DEVTYP    ADD QUALIFIER TO STEM NAME
-            BAS R5,SETVAR                CREATE THE VARIABLE
+            JAS R5,SETVAR                CREATE THE VARIABLE
             LH  R2,3(,R8)                COLS (DEF)
             LA  R3,VARDATA               POINT TO VARIABLE DATA AREA
-            BAS R15,REG2ZON3             CONVERT THAT TO ZONED-DECIMAL
+            JAS R15,REG2ZON3             CONVERT THAT TO ZONED-DECIMAL
             ST  R2,SHVVALL               LENGTH OF CONVERTED RESULT
             L   R3,STEMLENG              COMPUTE LENGTH OF STEM NAME
             LA  R3,L'DEVWDT(,R3)         PLUS LENGTH OF QUALIFIER
             MVC 0(L'DEVWDT,R4),DEVWDT    ADD QUALIFIER TO STEM NAME
-            BAS R5,SETVAR                CREATE THE VARIABLE
+            JAS R5,SETVAR                CREATE THE VARIABLE
             LH  R2,5(,R8)                ROWS (DEF)
             LA  R3,VARDATA               POINT TO VARIABLE DATA AREA
-            BAS R15,REG2ZON3             CONVERT THAT TO ZONED-DECIMAL
+            JAS R15,REG2ZON3             CONVERT THAT TO ZONED-DECIMAL
             ST  R2,SHVVALL               LENGTH OF CONVERTED RESULT
             L   R3,STEMLENG              COMPUTE LENGTH OF STEM NAME
             LA  R3,L'DEVHGT(,R3)         PLUS LENGTH OF QUALIFIER
             MVC 0(L'DEVHGT,R4),DEVHGT    ADD QUALIFIER TO STEM NAME
-            BAS R5,SETVAR                CREATE THE VARIABLE
+            JAS R5,SETVAR                CREATE THE VARIABLE
             LH  R2,7(,R8)                COLS (ALT)
             LA  R3,VARDATA               POINT TO VARIABLE DATA AREA
-            BAS R15,REG2ZON3             CONVERT THAT TO ZONED-DECIMAL
+            JAS R15,REG2ZON3             CONVERT THAT TO ZONED-DECIMAL
             ST  R2,SHVVALL               LENGTH OF CONVERTED RESULT
             L   R3,STEMLENG              COMPUTE LENGTH OF STEM NAME
             LA  R3,L'DEVWDA(,R3)         PLUS LENGTH OF QUALIFIER
             MVC 0(L'DEVWDA,R4),DEVWDA    ADD QUALIFIER TO STEM NAME
-            BAS R5,SETVAR                CREATE THE VARIABLE
+            JAS R5,SETVAR                CREATE THE VARIABLE
             LH  R2,9(,R8)                ROWS (ALT)
             LA  R3,VARDATA               POINT TO VARIABLE DATA AREA
-            BAS R15,REG2ZON3             CONVERT THAT TO ZONED-DECIMAL
+            JAS R15,REG2ZON3             CONVERT THAT TO ZONED-DECIMAL
             ST  R2,SHVVALL               LENGTH OF CONVERTED RESULT
             L   R3,STEMLENG              COMPUTE LENGTH OF STEM NAME
             LA  R3,L'DEVHGA(,R3)         PLUS LENGTH OF QUALIFIER
             MVC 0(L'DEVHGA,R4),DEVHGA    ADD QUALIFIER TO STEM NAME
-            BAS R5,SETVAR                CREATE THE VARIABLE
+            JAS R5,SETVAR                CREATE THE VARIABLE
             IF SET_81,(NOT,TF),$NOOP     IF NO X'81' QUERY REPLY YET
              MVI VARDATA,C'0'             BUFSZ (DEF)
              LA  R2,1                     SET LENGTH OF DATA VALUE
@@ -1154,14 +1168,14 @@ FNDSBA      TRT 0(0,R6),TRTBL            (SEE "EX" INSTRUCTION ABOVE)
              L   R3,STEMLENG              COMPUTE LENGTH OF STEM NAME
              LA  R3,L'DEVBSZ(,R3)         PLUS LENGTH OF QUALIFIER
              MVC 0(L'DEVBSZ,R4),DEVBSZ    ADD QUALIFIER TO STEM NAME
-             BAS R5,SETVAR                CREATE THE VARIABLE
+             JAS R5,SETVAR                CREATE THE VARIABLE
              MVI VARDATA,C'0'             BUFSZ (ALT)
              LA  R2,1                     SET LENGTH OF DATA VALUE
              ST  R2,SHVVALL                AND PUT IN CONTROL BLOCK
              L   R3,STEMLENG              COMPUTE LENGTH OF STEM NAME
              LA  R3,L'DEVBSA(,R3)         PLUS LENGTH OF QUALIFIER
              MVC 0(L'DEVBSA,R4),DEVBSA    ADD QUALIFIER TO STEM NAME
-             BAS R5,SETVAR                CREATE THE VARIABLE
+             JAS R5,SETVAR                CREATE THE VARIABLE
             ENDIF                        ENDIF
            ENDIF                        ENDIF
 
@@ -1172,23 +1186,23 @@ FNDSBA      TRT 0(0,R6),TRTBL            (SEE "EX" INSTRUCTION ABOVE)
             L   R3,STEMLENG              COMPUTE LENGTH OF STEM NAME
             LA  R3,L'DEVTYP(,R3)         PLUS LENGTH OF QUALIFIER
             MVC 0(L'DEVTYP,R4),DEVTYP    ADD QUALIFIER TO STEM NAME
-            BAS R5,SETVAR                CREATE THE VARIABLE
+            JAS R5,SETVAR                CREATE THE VARIABLE
             L   R2,3(,R8)                BUFSZ (DEF)
             LA  R3,VARDATA               POINT TO VARIABLE DATA AREA
-            BAS R15,REG2ZON3             CONVERT THAT TO ZONED-DECIMAL
+            JAS R15,REG2ZON3             CONVERT THAT TO ZONED-DECIMAL
             ST  R2,SHVVALL               LENGTH OF CONVERTED RESULT
             L   R3,STEMLENG              COMPUTE LENGTH OF STEM NAME
             LA  R3,L'DEVBSZ(,R3)         PLUS LENGTH OF QUALIFIER
             MVC 0(L'DEVBSZ,R4),DEVBSZ    ADD QUALIFIER TO STEM NAME
-            BAS R5,SETVAR                CREATE THE VARIABLE
+            JAS R5,SETVAR                CREATE THE VARIABLE
             L   R2,7(,R8)                BUFSZ (ALT)
             LA  R3,VARDATA               POINT TO VARIABLE DATA AREA
-            BAS R15,REG2ZON3             CONVERT THAT TO ZONED-DECIMAL
+            JAS R15,REG2ZON3             CONVERT THAT TO ZONED-DECIMAL
             ST  R2,SHVVALL               LENGTH OF CONVERTED RESULT
             L   R3,STEMLENG              COMPUTE LENGTH OF STEM NAME
             LA  R3,L'DEVBSA(,R3)         PLUS LENGTH OF QUALIFIER
             MVC 0(L'DEVBSA,R4),DEVBSA    ADD QUALIFIER TO STEM NAME
-            BAS R5,SETVAR                CREATE THE VARIABLE
+            JAS R5,SETVAR                CREATE THE VARIABLE
             IF SET_81,(NOT,TF),$NOOP     IF NO X'81' QUERY REPLY YET
              MVI VARDATA,C'0'             ROWS (DEF)
              LA  R2,1                     SET LENGTH OF DATA VALUE
@@ -1196,28 +1210,28 @@ FNDSBA      TRT 0(0,R6),TRTBL            (SEE "EX" INSTRUCTION ABOVE)
              L   R3,STEMLENG              COMPUTE LENGTH OF STEM NAME
              LA  R3,L'DEVHGT(,R3)         PLUS LENGTH OF QUALIFIER
              MVC 0(L'DEVHGT,R4),DEVHGT    ADD QUALIFIER TO STEM NAME
-             BAS R5,SETVAR                CREATE THE VARIABLE
+             JAS R5,SETVAR                CREATE THE VARIABLE
              MVI VARDATA,C'0'             COLS (DEF)
              LA  R2,1                     SET LENGTH OF DATA VALUE
              ST  R2,SHVVALL                AND PUT IN CONTROL BLOCK
              L   R3,STEMLENG              COMPUTE LENGTH OF STEM NAME
              LA  R3,L'DEVWDT(,R3)         PLUS LENGTH OF QUALIFIER
              MVC 0(L'DEVWDT,R4),DEVWDT    ADD QUALIFIER TO STEM NAME
-             BAS R5,SETVAR                CREATE THE VARIABLE
+             JAS R5,SETVAR                CREATE THE VARIABLE
              MVI VARDATA,C'0'             ROWS (ALT)
              LA  R2,1                     SET LENGTH OF DATA VALUE
              ST  R2,SHVVALL                AND PUT IN CONTROL BLOCK
              L   R3,STEMLENG              COMPUTE LENGTH OF STEM NAME
              LA  R3,L'DEVHGA(,R3)         PLUS LENGTH OF QUALIFIER
              MVC 0(L'DEVHGA,R4),DEVHGA    ADD QUALIFIER TO STEM NAME
-             BAS R5,SETVAR                CREATE THE VARIABLE
+             JAS R5,SETVAR                CREATE THE VARIABLE
              MVI VARDATA,C'0'             COLS (ALT)
              LA  R2,1                     SET LENGTH OF DATA VALUE
              ST  R2,SHVVALL                AND PUT IN CONTROL BLOCK
              L   R3,STEMLENG              COMPUTE LENGTH OF STEM NAME
              LA  R3,L'DEVWDA(,R3)         PLUS LENGTH OF QUALIFIER
              MVC 0(L'DEVWDA,R4),DEVWDA    ADD QUALIFIER TO STEM NAME
-             BAS R5,SETVAR                CREATE THE VARIABLE
+             JAS R5,SETVAR                CREATE THE VARIABLE
             ENDIF                        ENDIF
            ENDIF                        ENDIF
 *
@@ -1252,7 +1266,7 @@ FNDSBA      TRT 0(0,R6),TRTBL            (SEE "EX" INSTRUCTION ABOVE)
           L    R3,STEMLENG              COMPUTE LENGTH OF STEM NAME
           LA   R3,L'DEVEXC(,R3)         PLUS LENGTH OF QUALIFIER
           MVC  0(L'DEVEXC,R4),DEVEXC    ADD QUALIFIER TO STEM NAME
-          BAS  R5,SETVAR                CREATE THE VARIABLE
+          JAS  R5,SETVAR                CREATE THE VARIABLE
 *
           IF   SET_EXH,(ON,TF),$NOOP
            MVI VARDATA,C'1'             EXT. HILITE SUPPORT
@@ -1264,7 +1278,7 @@ FNDSBA      TRT 0(0,R6),TRTBL            (SEE "EX" INSTRUCTION ABOVE)
           L    R3,STEMLENG              COMPUTE LENGTH OF STEM NAME
           LA   R3,L'DEVEXH(,R3)         PLUS LENGTH OF QUALIFIER
           MVC  0(L'DEVEXH,R4),DEVEXH    ADD QUALIFIER TO STEM NAME
-          BAS  R5,SETVAR                CREATE THE VARIABLE
+          JAS  R5,SETVAR                CREATE THE VARIABLE
 *
          ENDIF                         END OF 'READQ' PROCESSING
 *
@@ -1289,13 +1303,13 @@ RETERR   SAM31                         MAKE SURE IT IS 31-BIT MODE
          CF    SET_KLZ                 REG2ZON3 NO LEADING ZEROES
          LR    R2,R5                   COPY R5 TO R2
          LA    R3,VARDATA              POINT TO VARIABLE DATA AREA
-         BAS   R15,REG2ZON3            CONVERT THAT TO ZONED-DECIMAL
+         JAS   R15,REG2ZON3            CONVERT THAT TO ZONED-DECIMAL
          LA    R1,VARDATA              POINT BACK TO VAR DATA AREA
          STM   R1,R2,SHVVALA           PUT IN SHV CONTROL BLOCK
 *
          LA    R3,2                    SET LENGTH OF VARIABLE NAME
          MVC   VARNAME+0(3),=C'RC '    SET VARIABLE NAME
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
 * ------------------------------------------------------------------- *
          XR    R15,R15                 CLEAR REG15 FOR RETURN CODE
 RETR15   TRAILER RETCODE=R15,SVAREA=SALEN
@@ -1324,7 +1338,7 @@ REG2ZON3 DS    0H    CONVERT REG2 TO LEFT-SIGN, ZONED-DECIMAL AT REG3
           SR   R2,R1                   CALC NO. OF CHARS TO MOVE
          ENDIF
          BCTR  R2,0                    DECR. LEN FOR ZERO REF.
-         EX    R2,MVRSLT               MOVE VALUE TO RESULT AREA
+         EXRL  R2,MVRSLT               MOVE VALUE TO RESULT AREA
          LA    R2,1(,R2)               INCR. LEN FOR NORMAL REF.
 * ------------------------------------------------------------------- *
          BR    R15
@@ -1335,7 +1349,7 @@ MVRSLT   MVC   0(0,R3),0(R1)           (SEE "EX" INSTRUCTION ABOVE)
 ZON2REG3 DS    0H    CONVERT ZONED-DECIMAL AT REG2 (L'REG3) INTO REG3
 * ------------------------------------------------------------------- *
          BCTR  R3,0                    DECR. FOR ZERO OFFSET
-         EX    R3,PKINPT               PACK 0(?,R2) FOR LENGTH OF R3
+         EXRL  R3,PKINPT               PACK 0(?,R2) FOR LENGTH OF R3
          CVB   R3,PWORK8               CONVERT PACKED-DECIMAL INTO REG3
 * ------------------------------------------------------------------- *
          BR    R15
@@ -1353,7 +1367,7 @@ SAYIT    DS    0H    USE REXX "SAY" TO DISPLAY MESSAGE
          BASR  R14,R15                 CALL ARXSAY
          IF    R15,(NZ,LTR),R15        IF NON-ZERO RETURN CODE
           LA   R5,8                      SET RESULT CODE
-          B    RETERR                    GO RETURN ERROR
+          J    RETERR                    GO RETURN ERROR
          ENDIF                         ENDIF
 * ------------------------------------------------------------------- *
          BR    R5
@@ -1396,12 +1410,12 @@ SETVAR   DS    0H    SET REXX VARIABLE VALUE
           IF   VARNAME(3),(NE,CLC),=C'RC '  IF NOT 'RC', REPORT ERRORS
            IF  R15,(NZ,LTR),R15          IF NON-ZERO RETURN CODE
             LA R5,8                       SET RESULT CODE
-            B  RETERR                     GO RETURN ERROR
+            J  RETERR                     GO RETURN ERROR
            ENDIF                         ENDIF
            IF  SHVRET,NE,SHVNEWV         IF NOT NEW VARIABLE
             IC R15,SHVRET                 SAVE ARXEXCOM CC
             LA R5,8                       SET RESULT CODE
-            B  RETERR                     GO RETURN ERROR
+            J  RETERR                     GO RETURN ERROR
            ENDIF                         ENDIF
           ENDIF                         ENDIF
          ENDIF                         ENDIF
@@ -1423,11 +1437,13 @@ BUFADR   DS    0H    CONVERT 3270 12-BIT ADDR TO 14-BIT ADDR
          BR    R5
 * =================================================================== *
          EJECT
+DATA     LOCTR
 * =================================================================== *
 STORAGE  DS    0D
 * ------------------------------------------------------------------- *
 SALEN    DC    A(DYNALENG)
 BUFLEN   DC    A(L'SCRBUF)
+ENTRY_P  DC    A(0)
 CARTNEP  DC    F'0'               CHANNEL APPENDAGE RTN ENTRY POINT
 CARTNBEG DC    F'0'               PFIX LOAD POINT ADDRESS
 CARTNLEN DC    F'0'               PFIX MODULE LENGTH MINUS ONE

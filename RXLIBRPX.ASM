@@ -94,13 +94,13 @@ RXLIBRPX HEADER VERSION='1.0',AUTHOR='DLC',DATE='(C)NOV23',            X
          SAM31                         SWITCH TO 31-BIT FOR REXX
          IF    SYSPCHF,(NO,TF),$NOOP   IF MISSING PCH ARGUMENT
           LHI  R5,-4                    SET RESULT CODE
-          B    RETERR                   GO RETURN ERROR
+          J    RETERR                   GO RETURN ERROR
          ENDIF                         ENDIF
          IF    DEBUG_F,(ON,TF),$NOOP   IF DEBUG IS ON
           MVC  VARDATA+0(7),=C'SYSPCH:' LET'S SEE THE PUNCH OUTPUT
           MVC  VARDATA+8(L'PCHDATA),PCHDATA
           LHI  R3,PCHEND-PCHAREA        SET LENGTH OF PUNCH OUTPUT
-          BAS  R5,SAYIT                 GO SAY IT
+          JAS  R5,SAYIT                 GO SAY IT
          ENDIF                         END OF DEBUG TEST
 *
          LH    R2,PCHLENG              GET LENGTH OF SYSPCH AREA
@@ -122,14 +122,14 @@ RXLIBRPX HEADER VERSION='1.0',AUTHOR='DLC',DATE='(C)NOV23',            X
          MVC   0(L'PCHSTEMN,R4),PCHSTEMN  MOVE IN STEM NAME
          A     R4,PCHSTEML                POINT TO AFTER STEM NAME
          LA    R3,0(,R4)               POINT TO VARIABLE NAME AREA
-         BAS   R15,REG2ZON3            CONVERT THAT TO ZONED-DECIMAL
+         JAS   R15,REG2ZON3            CONVERT THAT TO ZONED-DECIMAL
          L     R3,PCHSTEML             COMPUTE LENGTH OF STEM NAME
          AR    R3,R2                    PLUS LENGTH OF COUNTER
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
 *
          L     R2,PCHSTEMC             GET SAVED STEM COUNT
          LA    R3,VARDATA              POINT TO VARIABLE DATA AREA
-         BAS   R15,REG2ZON3            CONVERT THAT TO ZONED-DECIMAL
+         JAS   R15,REG2ZON3            CONVERT THAT TO ZONED-DECIMAL
          LA    R1,VARDATA              POINT BACK TO VAR DATA AREA
          STM   R1,R2,SHVVALA           PUT IN SHV CONTROL BLOCK
          LA    R4,VARNAME              POINT TO VAR NAME BUFFER
@@ -137,10 +137,10 @@ RXLIBRPX HEADER VERSION='1.0',AUTHOR='DLC',DATE='(C)NOV23',            X
          A     R4,PCHSTEML                POINT TO AFTER STEM NAME
          XR    R2,R2                   SET STEM INDEX TO ZERO
          LA    R3,0(,R4)               POINT TO VARIABLE NAME AREA
-         BAS   R15,REG2ZON3            CONVERT THAT TO ZONED-DECIMAL
+         JAS   R15,REG2ZON3            CONVERT THAT TO ZONED-DECIMAL
          L     R3,PCHSTEML             COMPUTE LENGTH OF STEM NAME
          AR    R3,R2                    PLUS LENGTH OF INDEX
-         BAS   R5,SETVAR               CREATE THE VARIABLE
+         JAS   R5,SETVAR               CREATE THE VARIABLE
 *
 * RETURN RESULT
 *
@@ -181,7 +181,7 @@ REG2ZON3 DS    0H    CONVERT REG2 TO LEFT-SIGN, ZONED-DECIMAL AT REG3
           SR   R2,R1                   CALC NO. OF CHARS TO MOVE
          ENDIF
          BCTR  R2,0                    DECR. LEN FOR ZERO REF.
-         EX    R2,MVRSLT               MOVE VALUE TO RESULT AREA
+         EXRL  R2,MVRSLT               MOVE VALUE TO RESULT AREA
          LA    R2,1(,R2)               INCR. LEN FOR NORMAL REF.
 * ------------------------------------------------------------------- *
          BR    R15
@@ -199,7 +199,7 @@ SAYIT    DS    0H    USE REXX "SAY" TO DISPLAY MESSAGE
          BASR  R14,R15                 CALL ARXSAY
          IF    R15,(NZ,LTR),R15        IF NON-ZERO RETURN CODE
           LA   R5,8                      SET RESULT CODE
-          B    RETERR                    GO RETURN ERROR
+          J    RETERR                    GO RETURN ERROR
          ENDIF                         ENDIF
 * ------------------------------------------------------------------- *
          BR    R5
@@ -220,12 +220,12 @@ SETVAR   DS    0H    SET REXX VARIABLE VALUE
           IF   VARNAME(3),(NE,CLC),=C'RC '  IF NOT 'RC', REPORT ERRORS
            IF  R15,(NZ,LTR),R15          IF NON-ZERO RETURN CODE
             LA R5,8                       SET RESULT CODE
-            B  RETERR                     GO RETURN ERROR
+            J  RETERR                     GO RETURN ERROR
            ENDIF                         ENDIF
            IF  SHVRET,NE,SHVNEWV         IF NOT NEW VARIABLE
             IC R15,SHVRET                 SAVE ARXEXCOM CC
             LA R5,8                       SET RESULT CODE
-            B  RETERR                     GO RETURN ERROR
+            J  RETERR                     GO RETURN ERROR
            ENDIF                         ENDIF
           ENDIF                         ENDIF
          ENDIF                         ENDIF
@@ -233,6 +233,7 @@ SETVAR   DS    0H    SET REXX VARIABLE VALUE
          BR    R5
 * =================================================================== *
          EJECT
+DATA     LOCTR
 * =================================================================== *
 STORAGE  DS    0D
 * ------------------------------------------------------------------- *
