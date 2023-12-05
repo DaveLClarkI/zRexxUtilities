@@ -222,6 +222,7 @@ GETVAR   DS    0H    GET REXX VARIABLE VALUE
          ENDIF                         ENDIF
 * ------------------------------------------------------------------- *
          BR    R2
+         CORG  0,256
 * =================================================================== *
          EJECT
 DATA     LOCTR
@@ -231,5 +232,7 @@ STORAGE  DS    0D
 SAVEAREA DS    9D                      STANDARD REG. SAVEAREA
 *
          LTORG
+*
+         CORG  0,256
 * =================================================================== *
          END   RXLIBRIX

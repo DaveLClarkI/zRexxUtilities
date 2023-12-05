@@ -1506,5 +1506,6 @@ DEVQRY   DC    C'_QRY'            QUERY INDICATOR
 DEVTYP   DC    C'_DEV'            DEVICE TYPE
 DEVEXC   DC    C'_EXC'            EXTENDED COLOR
 DEVEXH   DC    C'_EXH'            EXTENDED HILITE
+         CORG  0,256
 * =================================================================== *
          END   RX3270IO

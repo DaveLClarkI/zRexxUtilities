@@ -231,6 +231,7 @@ SETVAR   DS    0H    SET REXX VARIABLE VALUE
          ENDIF                         ENDIF
 * ------------------------------------------------------------------- *
          BR    R5
+         CORG  0,256
 * =================================================================== *
          EJECT
 DATA     LOCTR
@@ -240,5 +241,7 @@ STORAGE  DS    0D
 SAVEAREA DS    9D                      STANDARD REG. SAVEAREA
 *
          LTORG
+*
+         CORG  0,256
 * =================================================================== *
          END   RXLIBRLX
