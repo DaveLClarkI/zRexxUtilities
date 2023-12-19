@@ -3,4 +3,4 @@
 	url = https://github.com/DaveLClarkI/zRexxIncludes.git
 [submodule "zAssemblerMacros"]
 	path = zAssemblerMacros
-	url = https://github.com/DaveLClarkI/zAssemblerMacros
+	url = https://github.com/DaveLClarkI/zAssemblerMacros.git
