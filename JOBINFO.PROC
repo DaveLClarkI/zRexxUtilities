@@ -1,0 +1,49 @@
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */           
+/* REXX: JOBINFO    Proc Created 01/20/2005   By Dave Clark        */           
+/*                  Last Revised 08/23/2006                        */           
+/*                                                                 */           
+/* This procedure  will  capture  processing  information  for the */           
+/* current job and store this information in standard VSE symbolic */           
+/* parameters, as follows:                                         */           
+/*                                                                 */           
+/* // SETPARM JNM=''                                               */           
+/* // SETPARM JNO=''                                               */           
+/* // SETPARM JCL=''                                               */           
+/* // SETPARM PID=''                                               */           
+/* // EXEC REXX=JOBINFO,JNM,JNO,JCL,PID                            */           
+/*                                                                 */           
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */           
+                                                                                
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */           
+/* No warranty is expressed or implied.    Written by Dave L Clark */           
+/* Neither the author nor the company is   DAPSCO Information Sys. */           
+/* responsible for any loss or damage      3110 Kettering Blvd.    */           
+/* resulting from the use of this code.    Dayton, OH  45439       */           
+/* Source is provided on an as-is basis.   Phone (937)294-5331     */           
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */           
+                                                                                
+  SYSPOWJNM  = '';                                                              
+  SYSPOWJNUM = '';                                                              
+  SYSPOWJCLS = '';                                                              
+  SYSPID     = '';                                                              
+                                                                                
+  fc = SYSVAR('SYSPOWJNM');                                                     
+  fc = SYSVAR('SYSPOWJNUM');                                                    
+Signal On Syntax Name IgnoreError;                                              
+  fc = SYSVAR('SYSPOWJCLS'); /* requires ptf */                                 
+IgnoreError:                                                                    
+Signal Off Syntax;                                                              
+  fc = SYSVAR('SYSPID');                                                        
+                                                                                
+  jnm = Strip(SYSPOWJNM);                                                       
+  jno = Strip(SYSPOWJNUM);                                                      
+  jcl = Strip(SYSPOWJCLS);                                                      
+  pid = Strip(SYSPID);                                                          
+                                                                                
+  Call RXVSESYM 'Set','JNM','JNO','JCL','PID';                                  
+  If rc <> 0 Then Do                                                            
+    Say ' RXVSESYM Set error: rc = 'rc', result = 'result;                      
+    Exit 4;                                                                     
+  End                                                                           
+                                                                                
+Exit 0;                                                                         
