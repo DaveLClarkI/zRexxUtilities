@@ -1,0 +1,3 @@
+/* To cause the calling REXX procedure to be compiled vs. interpreted */        
+Say 'Compiling...';                                                             
+Return 0;                                                                       
