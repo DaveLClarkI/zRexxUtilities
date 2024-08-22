@@ -1,6 +1,6 @@
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 /* REXX: VIRTSIZE   Proc Created 11/25/2003   By Dave Clark        */
-/*                  Last Revised 08/19/2007                        */
+/*                  Last Revised 08/22/2024                        */
 /*                                                                 */
 /*      This procedure queries the current,  running VSE system to */
 /* calculate the total  virtual  size  (VSIZE) actually needed and */
@@ -360,6 +360,10 @@
       When typ = 'DYN-PA' Then
         Iterate;
       When typ = 'DSPACE' Then
+        Iterate;
+      When typ = 'SHR-64' Then
+        Iterate;
+      When typ = 'PRV-64' Then
         Iterate;
       When typ = 'SYSTEM' Then
         Do
