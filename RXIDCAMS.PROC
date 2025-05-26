@@ -1,164 +1,124 @@
-/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-/* REXX: RXIDCAMS   Proc Created 06/11/2004   By Dave Clark        */
-/*                  Last Revised 07/02/2004                        */
-/*                                                                 */
-/*      This procedure reads card input and performs variable name */
-/* resolution  for  the  purpose  of  passing  such  cards  to  an */
-/* internally-invoked instance of  IDCAMS  (see below for required */
-/* ARXEOJTB modifications).   Supplied input  must  consist of all */
-/* input cards (not JCL) required for IDCAMS.   Any JCL needed for */
-/* IDCAMS would precede execution of this procedure.               */
-/*                                                                 */
-/* // EXEC REXX=RXIDCAMS                                           */
-/*                                                                 */
-/* Arguments: none                                                 */
-/*                                                                 */
-/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-
-/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-/* No warranty is expressed or implied.    Written by Dave L Clark */
-/* Neither the author nor the company is   DAPSCO Information Sys. */
-/* responsible for any loss or damage      3110 Kettering Blvd.    */
-/* resulting from the use of this code.    Dayton, OH  45439       */
-/* Source is provided on an as-is basis.   Phone (937)294-5331     */
-/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-
-/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-/*      The following is  an  abbreviated  example  of the type of */
-/* modifications you must make to the PRD1.BASE.ARXEOJTB.Z library */
-/* member and then re-assemble it into the PRD2.CONFIG library:    */
-/*                                                                 */
-/*   .                                                             */
-/*   .                                                             */
-/*   .                                                             */
-/* TOTAL    DC F'13'          /* Total # of entries           */   */
-/* USED     DC F'13'          /* # OF ENTRIES USED            */   */
-/*   .                                                             */
-/*   .                                                             */
-/*   .                                                             */
-/* ENTRY_13 EQU *             /* ARXEOJTB Entry 13            */   */
-/*          DC CL8'XIDCAMS '  /* SYNONYM USED IN ADDRESS LINK */   */
-/*          DC CL8'IDCAMS  '  /* NAME OF PHASE                */   */
-/*          DC AL4(0)         /* Must be Zero                 */   */
-/*          DC CL1'NO'        /* Phase Loaded in program area */   */
-/*          DC CL7' '         /* Reserved                     */   */
-/*   .                                                             */
-/*   .                                                             */
-/*   .                                                             */
-/*                                                                 */
-/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-
-/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-/*      Note that this  procedure  is  only  required  in order to */
-/* process symbolic variable name resolutions and,  as such, those */
-/* symbolic variables must be passed  to this procedure so that it */
-/* has access to their values.  For example:                       */
-/*                                                                 */
-/* // JOB    INTERNALLY INVOKE IDCAMS/W VAR SUBSTITUTION           */
-/* // ...  JCL for IDCAMS goes here  ...                           */
-/* // SETPARM DSN='DAPSCO.COMASTR.FILE'                            */
-/* // SETPARM CAT='DAPSCO.DAPA.CATALOG'                            */
-/* // EXEC   REXX=RXIDCAMS,DSN,CAT                                 */
-/*    LISTCAT ENTRIES(<DSN>) -                                     */
-/*            CATALOG(<CAT>) ALL                                   */
-/* /* EOD */                                                       */
-/* /& EOJ                                                          */
-/*                                                                 */
-/* Also note that the  less-than/greater-than  symbols are used to */
-/* delineate  the  VSE  symbolic  parameter  name  for  which this */
-/* procedure is to perform variable name resolution.               */
-/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-
-  False = (1=0);
-  True  = (1=1);
-
-  rc = 0;
-  Arg msg;
-
-/* ----------------------------------------------------------------- */
-/* Get SYSIPT data                                                   */
-/* ----------------------------------------------------------------- */
-
-  "EXECIO * DISKR SYSIPT ( OPEN FINIS STEM card. )";
-  If rc ¬= 0 Then Do
-    Say ' Error: EXECIO returned rc =' rc;
-    Exit 16;
-  End
-
-/* ----------------------------------------------------------------- */
-/* Validate PARM arguments                                           */
-/* ----------------------------------------------------------------- */
-
-  If msg == '?' Then Do
-    Do n = 1 While Left(Sourceline(n),2) = '/*'
-      Say Sourceline(n);
-    End
-    Exit rc;
-  End
-
-/* ----------------------------------------------------------------- */
-/* Process SYSIPT data                                               */
-/* ----------------------------------------------------------------- */
-
-  sysipt.  = '';
-  sysipt.0 = 0;
-
-  Do n = 1 to card.0
-    card.n = Strip(card.n,'Trailing');
-    Do While Pos('<',card.n) > 0
-      Parse Var card.n '<'temp'>';
-      Call RXVSESYM 'Get',temp;
-      If rc ¬= 0 Then Do
-        Say ' RXVSESYM Get error: rc = 'rc', result = 'result;
-        Exit 4;
-      End
-      card.n = ReplStr('<'temp'>',card.n,Value(Value(temp)),True,'I');
-    End
-    x = sysipt.0 + 1;
-    sysipt.x = card.n;
-    sysipt.0 = x;
-  End
-
-   y = REXXIPT('sysipt.');
-   Address LINK 'XIDCAMS';
-   If rc > 4 Then Do
-     saverc = rc;
-     oldout = ASSGN('STDOUT','SYSLOG');
-     Say 'IDCAMS return code =' saverc;
-     Queue 'PAUSE';
-     rc = 0;
-   End
-
-Exit rc;
-
-/* ----------------------------------------------------------------- */
-/* Internal functions                                                */
-/* ----------------------------------------------------------------- */
-
-ReplStr: Procedure
-/*
-  Where: needle    is the string value to find,
-         haystack  is the string value to search,
-         seed      is the string value to replace 'needle',
-         opt       is a Boolean value indicating whether all
-                     occurrences of 'needle' will be replaced, and
-         case      is a string value indicating whether to
-                     'IGNORE' or 'MATCH' case when searching.
-*/
-  Parse Arg needle,haystack,seed,opt,case;
-  p = 1;
-  If opt ¬= 1 Then opt = 0;
-  Do Forever Until opt = 0;
-    If Left(case,1) == 'I' Then
-      p = Pos(Translate(needle),Translate(haystack),p);
-    Else Do
-      p = Pos(needle,haystack,p);
-    End
-    If p = 0 Then Leave;
-    haystack = Insert(seed,DelStr(haystack,p,Length(needle)),p-1);
-    p = p + 1;
-    If p > Length(haystack) Then Leave;
-  End
-Return haystack;
-
-/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */           
+/* REXX: RXIDCAMS   Proc Created 06/11/2004   By Dave Clark        */           
+/*                  Last Revised 05/26/2025                        */           
+/*                                                                 */           
+/*      This procedure reads card input and performs variable name */           
+/* resolution  for  the  purpose  of  passing  such  cards  to  an */           
+/* internally-invoked instance of  IDCAMS  (see below for required */           
+/* ARXEOJTB modifications).   Supplied input  must  consist of all */           
+/* input cards (not JCL) required for IDCAMS.   Any JCL needed for */           
+/* IDCAMS would precede execution of this procedure.               */           
+/*                                                                 */           
+/* // EXEC REXX=RXIDCAMS                                           */           
+/*                                                                 */           
+/* Arguments: none                                                 */           
+/*                                                                 */           
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */           
+                                                                                
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */           
+/* No warranty is expressed or implied.    Written by Dave L Clark */           
+/* Neither the author nor the company is   Winsupply Group Srvcs   */           
+/* responsible for any loss or damage      3110 Kettering Blvd.    */           
+/* resulting from the use of this code.    Dayton, OH  45439       */           
+/* Source is provided on an as-is basis.   Phone (937)294-5331     */           
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */           
+                                                                                
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */           
+/*      The following is  an  abbreviated  example  of the type of */           
+/* modifications you must make to the PRD1.BASE.ARXEOJTB.Z library */           
+/* member and then re-assemble it into the PRD2.CONFIG library:    */           
+/*                                                                 */           
+/*   .                                                             */           
+/*   .                                                             */           
+/*   .                                                             */           
+/* TOTAL    DC F'13'          /* Total # of entries           */   */           
+/* USED     DC F'13'          /* # OF ENTRIES USED            */   */           
+/*   .                                                             */           
+/*   .                                                             */           
+/*   .                                                             */           
+/* ENTRY_13 EQU *             /* ARXEOJTB Entry 13            */   */           
+/*          DC CL8'XIDCAMS '  /* SYNONYM USED IN ADDRESS LINK */   */           
+/*          DC CL8'IDCAMS  '  /* NAME OF PHASE                */   */           
+/*          DC AL4(0)         /* Must be Zero                 */   */           
+/*          DC CL1'NO'        /* Phase Loaded in program area */   */           
+/*          DC CL7' '         /* Reserved                     */   */           
+/*   .                                                             */           
+/*   .                                                             */           
+/*   .                                                             */           
+/*                                                                 */           
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */           
+                                                                                
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */           
+/*      Note that this  procedure  is  only  required  in order to */           
+/* process symbolic variable name resolutions and,  as such, those */           
+/* symbolic variables must be passed  to this procedure so that it */           
+/* has access to their values.  For example:                       */           
+/*                                                                 */           
+/* // JOB    INTERNALLY INVOKE IDCAMS/W VAR SUBSTITUTION           */           
+/* // ...  JCL for IDCAMS goes here  ...                           */           
+/* // SETPARM DSN='DAPSCO.COMASTR.FILE'                            */           
+/* // SETPARM CAT='DAPSCO.DAPA.CATALOG'                            */           
+/* // EXEC   REXX=RXIDCAMS,DSN,CAT                                 */           
+/*    LISTCAT ENTRIES(<DSN>) -                                     */           
+/*            CATALOG(<CAT>) ALL                                   */           
+/* /* EOD */                                                       */           
+/* /& EOJ                                                          */           
+/*                                                                 */           
+/* Also note that the  less-than/greater-than  symbols are used to */           
+/* delineate  the  VSE  symbolic  parameter  name  for  which this */           
+/* procedure is to perform variable name resolution.               */           
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */           
+                                                                                
+  Parse Source _sys _env _pgm _tokens;                                          
+                                                                                
+  rc = 0;                                                                       
+  Arg msg;                                                                      
+                                                                                
+/* ----------------------------------------------------------------- */         
+/* Get SYSIPT data                                                   */         
+/* ----------------------------------------------------------------- */         
+                                                                                
+  "EXECIO * DISKR SYSIPT ( OPEN FINIS STEM card. )";                            
+  If rc <> 0 Then Do                                                            
+    Say ' Error: EXECIO returned rc =' rc;                                      
+    Exit 16;                                                                    
+  End                                                                           
+                                                                                
+/* ----------------------------------------------------------------- */         
+/* Validate PARM arguments                                           */         
+/* ----------------------------------------------------------------- */         
+                                                                                
+  If msg == '?' Then Do                                                         
+    Do n = 1 While Left(Sourceline(n),2) = '/*'                                 
+      Say Sourceline(n);                                                        
+    End                                                                         
+    Exit rc;                                                                    
+  End                                                                           
+                                                                                
+/* ----------------------------------------------------------------- */         
+/* Process SYSIPT data                                               */         
+/* ----------------------------------------------------------------- */         
+                                                                                
+  sysipt.  = '';                                                                
+  sysipt.0 = 0;                                                                 
+                                                                                
+  Do n = 1 to card.0                                                            
+    card.n = ReplVars(Strip(card.n,'Trailing'));                                
+    x = sysipt.0 + 1;                                                           
+    sysipt.x = card.n;                                                          
+    sysipt.0 = x;                                                               
+  End                                                                           
+                                                                                
+   y = REXXIPT('sysipt.');                                                      
+   Address LINK 'XIDCAMS';                                                      
+   If rc > 4 Then Do                                                            
+     saverc = rc;                                                               
+     oldout = ASSGN('STDOUT','SYSLOG');                                         
+     Say 'IDCAMS return code =' saverc;                                         
+     Queue 'PAUSE';                                                             
+     rc = 0;                                                                    
+   End                                                                          
+                                                                                
+Exit rc;                                                                        
+                                                                                
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */           
