@@ -1,6 +1,6 @@
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */           
 /* REXX: VSELCOMP   Proc Created 09/26/2022   By Dave Clark        */           
-/*                  Last Revised 09/30/2022                        */           
+/*                  Last Revised 01/21/2026                        */           
 /*                                                                 */           
 /* This procedure represents a two-stage  process to extract a VSE */           
 /* sub-library member list in a primary system and then compare it */           
@@ -13,7 +13,7 @@
 /*                                                                 */           
 /* Arguments: <RUNOPT=><{EXTRACT|COMPARE}>                         */           
 /*            <SUBLIB=>lib.sublib                                  */           
-/*            <RPTOPT=><{FULL|MEMBERS|DATES|SIZES}>                */           
+/*            <RPTOPT=><{FULL|MEMBERS|DATES|MODES|SIZES}>          */           
 /*            <RPTOUT=><{PRINT|EMAIL}>                             */           
 /*            <MAILTO=><dist</dist</dist>>>                        */           
 /* Notes:                                                          */           
@@ -33,8 +33,9 @@
 /*        RPTOPT=  is an optional keyword tag;                     */           
 /*        FULL     all member attributes compared (default);       */           
 /*        MEMBERS  only member name/type is compared;              */           
-/*        DATES    members plus created/updated date comparison;   */           
-/*        SIZES    above, plus member bytes/records comparison;    */           
+/*        DATES    above, plus created/updated date comparison;    */           
+/*        MODES    above, plus storage mode (B vs. R) comparison;  */           
+/*        SIZES    above, plus member size comparison;             */           
 /*        RPTOUT=  is an optional keyword tag;                     */           
 /*        PRINT    the report output should be printed (default);  */           
 /*        EMAIL    the report output should be emailed;            */           
@@ -42,7 +43,10 @@
 /*        dist     is one to three optional distribution group     */           
 /*                   names separated by slashes (default, *DAPMF). */           
 /*                                                                 */           
-/* Note: The DUMP and SYSDEBUG member types are always ignored.    */           
+/* Note: The DUMP and  SYSDEBUG  member  types are always ignored. */           
+/*       Also, MEMBERS|DATES|MODES|SIZES comparisons only apply to */           
+/*       OBJ and PHASE comparisions (i.e., other member types will */           
+/*       always be FULL comparisons).                              */           
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */           
                                                                                 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */           
@@ -75,9 +79,18 @@
 /* the resulting emailed report.                                   */           
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */           
                                                                                 
+/* ----------------------------------------------------------------- */         
+/* Parse Source values                                               */         
+/* ----------------------------------------------------------------- */         
+                                                                                
   Parse Source _sys _env _pgm _tokens;                                          
                                                                                 
+  _True  = (0=0);            /* define boolean True value  */                   
+  _False = (0=1);            /* define boolean False value */                   
+                                                                                
   rc = 0;                                                                       
+                                                                                
+                                                                                
   Arg msg;                                                                      
                                                                                 
 /* ----------------------------------------------------------------- */         
@@ -124,6 +137,7 @@
   sysparm = Copies(' ',8);             /* get the 1-letter system */            
   Address LINKPGM "SYSPARM sysparm";   /* code from the SYSPARM   */            
   syscode = Substr(sysparm,1,1);       /* area for identification */            
+  nbsp = '41'x;                                                                 
                                                                                 
   If runopt = 'COMPARE' Then Signal STAGE2;                                     
                                                                                 
@@ -166,12 +180,12 @@ STAGE1:
     End                                                                         
     If savlib = '' Then Iterate;                                                
     Parse Var syslst.i member type created . 28 updated,                        
-                                             36 size code blks .;               
+                                             36 size mode blks .;               
     If member = '' Then Do                                                      
       savlib = '';                                                              
       Iterate;                                                                  
     End                                                                         
-    If type = 'DUMP' | type = 'SYSDEBUG' Then Do                                
+    If InList(type,'DUMP,SYSDEBUG') Then Do                                     
       Iterate;                                                                  
     End                                                                         
     If updated = '  -  -  ' Then Do                                             
@@ -201,7 +215,7 @@ STAGE1:
                 Left(created,8),                                                
                 Left(updated,8),                                                
                 ||Right(size,7),                                                
-                Left(code,2),                                                   
+                Left(mode,2),                                                   
                 Right(blks,6);                                                  
   End i                                                                         
                                                                                 
@@ -278,12 +292,12 @@ STAGE2:
     End                                                                         
     If savlib = '' Then Iterate;                                                
     Parse Var syslst.i member2 type2 created2 . 28 updated2,                    
-                                                36 size2 code2 blks2 .;         
+                                                36 size2 mode2 blks2 .;         
     If member2 = '' Then Do                                                     
       savlib = '';                                                              
       Iterate;                                                                  
     End                                                                         
-    If type2 = 'DUMP' | type2 = 'SYSDEBUG' Then Do                              
+    If InList(type2,'DUMP,SYSDEBUG') Then Do                                    
       Iterate;                                                                  
     End                                                                         
     If updated2 = '  -  -  ' Then Do                                            
@@ -297,7 +311,7 @@ STAGE2:
                 Left(created2,8),                                               
                 Left(updated2,8),                                               
                 ||Right(size2,7),                                               
-                Left(code2,2),                                                  
+                Left(mode2,2),                                                  
                 Right(blks2,6);                                                 
   End i                                                                         
                                                                                 
@@ -339,12 +353,12 @@ STAGE2:
           Call GetSecndryMember;                                                
         End                                                                     
 /* member attributes equal comparison ------------------------------ */         
-      When rptopt  = 'FULL',                                                    
+      When (rptopt  = 'FULL',                                                   
+      |    \InList(type,'OBJ,PHASE')),                                          
       &   (updated = updated2,                                                  
-      |    updated = created2,                                                  
-      |    created = updated2),                                                 
+      |    created = created2),                                                 
+      &    mode    = mode2,                                                     
       &    size    = size2,                                                     
-      &    code    = code2,                                                     
       &    blks    = blks2,                                                     
       Then Do                                                                   
           Call GetPrimaryMember;                                                
@@ -352,44 +366,63 @@ STAGE2:
         End                                                                     
       When rptopt  = 'SIZES',                                                   
       &   (updated = updated2,                                                  
-      |    updated = created2,                                                  
-      |    created = updated2),                                                 
+      |    created = created2),                                                 
+      &    mode    = mode2,                                                     
       &    size    = size2,                                                     
-      &    code    = code2,                                                     
+      Then Do                                                                   
+          Call GetPrimaryMember;                                                
+          Call GetSecndryMember;                                                
+        End                                                                     
+      When rptopt  = 'MODES',                                                   
+      &   (updated = updated2,                                                  
+      |    created = created2),                                                 
+      &    mode    = mode2,                                                     
       Then Do                                                                   
           Call GetPrimaryMember;                                                
           Call GetSecndryMember;                                                
         End                                                                     
       When rptopt  = 'DATES',                                                   
       &   (updated = updated2,                                                  
-      |    updated = created2,                                                  
-      |    created = updated2),                                                 
+      |    created = created2),                                                 
       Then Do                                                                   
           Call GetPrimaryMember;                                                
           Call GetSecndryMember;                                                
         End                                                                     
 /* member attributes not equal comparison -------------------------- */         
-      When rptopt  = 'DATES',                                                   
-      &    created <> created2,                                                 
+      When (rptopt  = 'FULL',                                                   
+      |    \InList(type,'OBJ,PHASE')),                                          
+      &   (updated <> updated2,                                                 
+      |    created <> created2,                                                 
+      |    mode    <> mode2,                                                    
+      |    size    <> size2,                                                    
+      |    blks    <> blks2),                                                   
       Then Do                                                                   
           Call AddBothToReport;                                                 
           Call GetPrimaryMember;                                                
           Call GetSecndryMember;                                                
         End                                                                     
       When rptopt  = 'SIZES',                                                   
-      &   (created <> created2,                                                 
-      |    size    <> size2,                                                    
-      |    code    <> code2),                                                   
+      &   (updated <> updated2,                                                 
+      |    created <> created2,                                                 
+      |    mode    <> mode2,                                                    
+      |    size    <> size2),                                                   
       Then Do                                                                   
           Call AddBothToReport;                                                 
           Call GetPrimaryMember;                                                
           Call GetSecndryMember;                                                
         End                                                                     
-      When rptopt  = 'FULL',                                                    
-      &   (created <> created2,                                                 
-      |    size    <> size2,                                                    
-      |    code    <> code2,                                                    
-      |    blks    <> blks2),                                                   
+      When rptopt  = 'MODES',                                                   
+      &   (updated <> updated2,                                                 
+      |    created <> created2,                                                 
+      |    mode    <> mode2),                                                   
+      Then Do                                                                   
+          Call AddBothToReport;                                                 
+          Call GetPrimaryMember;                                                
+          Call GetSecndryMember;                                                
+        End                                                                     
+      When rptopt  = 'DATES',                                                   
+      &   (updated <> updated2,                                                 
+      |    created <> created2),                                                
       Then Do                                                                   
           Call AddBothToReport;                                                 
           Call GetPrimaryMember;                                                
@@ -462,39 +495,42 @@ Return delta.0;
                                                                                 
 ReportHeader:                                                                   
   If delta.0 = 0 Then Do                                                        
-    delta.0  = 11;                                                              
+    delta.0  = 12;                                                              
     delta.1  = 'SUBLIBRARY='sublib;                                             
-    delta.2  = '41'x;                                                           
+    delta.2  = nbsp;                                                            
     delta.3  = 'Getting listed on this report does not necessarily',            
                'indicate a problem.  It just means that the';                   
     delta.4  = 'secondary system is not running the same version',              
                'of the code as is presently on the primary';                    
-    delta.5  = 'system.  To get an entry off this report you just',             
-               'have to recatalog it in both systems so';                       
-    delta.6  = 'that the dates and member attributes match on',                 
-               'both systems.';                                                 
-    delta.7  = '41'x;                                                           
-    delta.8  = '--------  P R I M A R Y   S Y S T E M (?)  ---------',          
+    delta.5  = 'system.  To get an entry off of this report, you',              
+               'just have to recatalog it in both systems so';                  
+    delta.6  = 'that the last update dates and member attributes',              
+               'match--on both systems.  (Note that in the';                    
+    delta.7  = 'absence of a last update date, the creation date',              
+               'is used for comparison purposes.)';                             
+    delta.8  = nbsp;                                                            
+    delta.9  = '--------  P R I M A R Y   S Y S T E M (?)  ---------',          
                '|',                                                             
                '------  S E C O N D A R Y   S Y S T E M (?)  -------';          
-    delta.8  = ReplStr('?',delta.8,pricode);                                    
-    delta.8  = ReplStr('?',delta.8,syscode);                                    
-    delta.9  = ' M E M B E R      CREATION   LAST     BYTES    LIBR ',          
+    delta.9  = ReplStr('?',delta.9,pricode);                                    
+    delta.9  = ReplStr('?',delta.9,syscode);                                    
+    delta.10 = ' M E M B E R      CREATION   LAST     BYTES    LIBR ',          
                '|',                                                             
                ' M E M B E R      CREATION   LAST     BYTES    LIBR ';          
-    delta.10 = 'NAME     TYPE     DATE      UPDATE   RECORDS   BLKS ',          
+    delta.11 = 'NAME     TYPE     DATE      UPDATE   RECORDS   BLKS ',          
                '|',                                                             
                'NAME     TYPE     DATE      UPDATE   RECORDS   BLKS ';          
-    delta.11 = '----------------------------------------------------',          
+    delta.12 = '----------------------------------------------------',          
                '|',                                                             
                '----------------------------------------------------';          
   End                                                                           
 Return delta.0;                                                                 
+                                                                                
 ReportFooter:                                                                   
   If delta.0 > 0 Then Do                                                        
     n = delta.0;                                                                
     n = n + 1;                                                                  
-    delta.n = '41'x;                                                            
+    delta.n = nbsp;                                                             
     n = n + 1;                                                                  
     delta.n = 'End of delta report ('count 'entries)';                          
     delta.0 = n;                                                                
@@ -503,9 +539,11 @@ Return delta.0;
                                                                                 
 GetPrimaryMember:                                                               
   If p <= primary.0 Then p = p + 1;                                             
-  If p <= primary.0 Then                                                        
-    Parse Var primary.p member type created . 28 updated,                       
-                                              36 size code blks .;              
+  If p <= primary.0 Then Do                                                     
+    Parse Var primary.p member type created . 28 updated .,                     
+                                              36 size mode blks .;              
+    If updated = '' Then updated = created;                                     
+  End                                                                           
   Else Do                                                                       
     member  = 'FF'x;                                                            
     type    = 'FF'x;                                                            
@@ -513,9 +551,11 @@ GetPrimaryMember:
 Return p;                                                                       
 GetSecndryMember:                                                               
   If s <= secndry.0 Then s = s + 1;                                             
-  If s <= secndry.0 Then                                                        
-    Parse Var secndry.s member2 type2 created2 . 28 updated2,                   
-                                                 36 size2 code2 blks2 .;        
+  If s <= secndry.0 Then Do                                                     
+    Parse Var secndry.s member2 type2 created2 . 28 updated2 .,                 
+                                                 36 size2 mode2 blks2 .;        
+    If updated2 = '' Then updated2 = created2;                                  
+  End                                                                           
   Else Do                                                                       
     member2  = 'FF'x;                                                           
     type2    = 'FF'x;                                                           
@@ -624,5 +664,119 @@ TranslateUser: Procedure;
     Otherwise                                                                   
   End                                                                           
 Return _arg_user;                                                               
+                                                                                
+/* ----------------------------------------------------------------- */         
+/* Return a numeric value formatted with commas.                     */         
+/* ----------------------------------------------------------------- */         
+Commas: Procedure                                                               
+  Arg str;                                                                      
+  If Pos(".",str) < 1 Then decm = "";                                           
+  Else decm = SubStr(str,Pos(".",str));                                         
+  str  = Left(str,Length(str)-Length(decm));                                    
+  Do i = Length(str)-3 To 1 By -3                                               
+    str = Left(str,i)","SubStr(str,i+1);                                        
+  End                                                                           
+Return str||decm;                                                               
+                                                                                
+/* ----------------------------------------------------------------- */         
+/* De-edit a string value into a (potentially) usable number.        */         
+/* ----------------------------------------------------------------- */         
+DEEDIT: Procedure;                                                              
+Return Space(Translate(Arg(1),'','>$/,%:BKMGTP'),0);                            
+                                                                                
+/* ----------------------------------------------------------------- */         
+/* Return a readable and scaled file size specification.             */         
+/* ----------------------------------------------------------------- */         
+FileSize: Procedure;                                                            
+  Arg nbr,cisize,type;                                                          
+  If type == 'XLDS' Then Do                                                     
+    nbr = nbr * cisize;                                                         
+    Return FormatScaled(nbr,5,2,1,1000,"BKMGTP");                               
+  End                                                                           
+Return FormatScaled(nbr,5,2,1,1024,"BKMGTP");                                   
+                                                                                
+/* ----------------------------------------------------------------- */         
+/* Return a readable and scaled numeric value with commas.           */         
+/* ----------------------------------------------------------------- */         
+FormatScaled: Procedure;                                                        
+  Arg nbr,wdt,whl,dcm,factor,radix;                                             
+  Do scale = 1 To Length(radix)                                                 
+    If nbr < (10**whl) Then Leave;                                              
+    nbr = nbr / factor;                                                         
+  End                                                                           
+Return Right(Commas(Format(nbr,,dcm))||SubStr(radix,scale,1),wdt);              
+                                                                                
+/* ----------------------------------------------------------------- */         
+/* IF Function whose first argument is a Boolean value that          */         
+/*             determines which of the other two arguments to return */         
+/* ----------------------------------------------------------------- */         
+IFF: Procedure;                                                                 
+  Parse Arg cond,trueValue,falseValue;                                          
+  If cond Then Return trueValue;                                                
+Return falseValue;                                                              
+/* ----------------------------------------------------------------- */         
+                                                                                
+/* ----------------------------------------------------------------- */         
+/* INLIST Function whose first argument is a search value to find    */         
+/*                 in the second argument (a blank-delimited list)   */         
+/*                 and returning a Boolean result of the search.     */         
+/* ----------------------------------------------------------------- */         
+InList:                                                                         
+  If Left(Arg(3),1) = 'I' Then Do                                               
+    If WordPos(Translate(Arg(1)),Translate(Arg(2))) > 0 Then                    
+      Return _True;                                                             
+  End                                                                           
+  Else Do                                                                       
+    If WordPos(Arg(1),Arg(2)) > 0 Then Return _True;                            
+  End                                                                           
+Return _False;                                                                  
+                                                                                
+/* ----------------------------------------------------------------- */         
+/* INSTR Function whose first argument is a search value to find     */         
+/*                in the second argument (a variable-length string)  */         
+/*                and returning a Boolean result of the search.      */         
+/* ----------------------------------------------------------------- */         
+InStr:                                                                          
+  If Left(Arg(3),1) = 'I' Then Do                                               
+    If Pos(Translate(Arg(1)),Translate(Arg(2))) > 0 Then Return _True;          
+  End                                                                           
+  Else Do                                                                       
+    If Pos(Arg(1),Arg(2)) > 0 Then Return _True;                                
+  End                                                                           
+Return _False;                                                                  
+                                                                                
+/* ----------------------------------------------------------------- */         
+/* KWORD Function whose argument is tested for an equal sign         */         
+/*                (indicating it is a keyword value)                 */         
+/*                and returning a Boolean result.                    */         
+/* ----------------------------------------------------------------- */         
+Kword:                                                                          
+  If Pos('=',Arg(1)) > 0 Then Return _True;                                     
+Return _False;                                                                  
+                                                                                
+/* ----------------------------------------------------------------- */         
+/* Convert packed to zoned decimal with optional decimal point.      */         
+/* ----------------------------------------------------------------- */         
+P2D: Procedure;                                                                 
+  Parse Arg _pdec _ddig.;                                                       
+  _hexstr = C2X(_pdec);                                                         
+  _sign = Right(_hexstr,1);                                                     
+  _zdec = Left(_hexstr,Length(_hexstr)-1) + 0;                                  
+  If _ddig > 0 Then                                                             
+    _zdec = _zdec / (_ddig * 10);                                               
+  If Pos(_sign,'BD') > 0 Then                                                   
+    Return '-'_zdec;                                                            
+Return _zdec;                                                                   
+                                                                                
+/* ----------------------------------------------------------------- */         
+/* Send "SAY" output to both console and printer.                    */         
+/* ----------------------------------------------------------------- */         
+SayAll: Procedure;                                                              
+  Parse Arg msg;                                                                
+  oldout = ASSGN('STDOUT','SYSLOG');                                            
+  Say msg;                                                                      
+  oldout = ASSGN('STDOUT','SYSLST');                                            
+  Say msg;                                                                      
+Return;                                                                         
                                                                                 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */         
