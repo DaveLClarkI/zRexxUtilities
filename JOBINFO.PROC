@@ -1,54 +1,56 @@
-/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */           
-/* REXX: JOBINFO    Proc Created 01/20/2005   By Dave Clark        */           
-/*                  Last Revised 05/26/2025                        */           
-/*                                                                 */           
-/* This procedure  will  capture  processing  information  for the */           
-/* current job and store this information in standard VSE symbolic */           
-/* parameters, as follows:                                         */           
-/*                                                                 */           
-/* // SETPARM JNM=''                                               */           
-/* // SETPARM JNO=''                                               */           
-/* // SETPARM JCL=''                                               */           
-/* // SETPARM PID=''                                               */           
-/* // SETPARM CPU=''                                               */           
-/* // EXEC REXX=JOBINFO,JNM,JNO,JCL,PID,CPU                        */           
-/*                                                                 */           
-/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */           
-                                                                                
-/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */           
-/* No warranty is expressed or implied.    Written by Dave L Clark */           
-/* Neither the author nor the company is   Winsupply Group Srvcs   */           
-/* responsible for any loss or damage      3110 Kettering Blvd.    */           
-/* resulting from the use of this code.    Dayton, OH  45439       */           
-/* Source is provided on an as-is basis.   Phone (937)294-5331     */           
-/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */           
-                                                                                
-  SYSPOWJNM  = '';                                                              
-  SYSPOWJNUM = '';                                                              
-  SYSPOWJCLS = '';                                                              
-  SYSPID     = '';                                                              
-  SYSCPUID   = '';                                                              
-                                                                                
-  fc = SYSVAR('SYSPOWJNM');                                                     
-  fc = SYSVAR('SYSPOWJNUM');                                                    
-Signal On Syntax Name IgnoreError;                                              
-  fc = SYSVAR('SYSPOWJCLS'); /* requires ptf */                                 
-IgnoreError:                                                                    
-Signal Off Syntax;                                                              
-  fc = SYSVAR('SYSPID');                                                        
-  fc = SYSVAR('SYSCPUID');                                                      
-                                                                                
-  jnm = Strip(SYSPOWJNM);                                                       
-  jno = Strip(SYSPOWJNUM);                                                      
-  jcl = Strip(SYSPOWJCLS);                                                      
-  pid = Strip(SYSPID);                                                          
-  Parse Value Strip(SYSCPUID) With . 3 cpu . 9 mdl . 13 .;                      
-  cpu = 'C'cpu'.M'mdl;                                                          
-                                                                                
-  Call RXVSESYM 'Set','JNM','JNO','JCL','PID','CPU';                            
-  If rc <> 0 Then Do                                                            
-    Say ' RXVSESYM Set error: rc = 'rc', result = 'result;                      
-    Exit 4;                                                                     
-  End                                                                           
-                                                                                
-Exit 0;                                                                         
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* REXX: JOBINFO    Proc Created 01/20/2005   By Dave Clark        */
+/*                  Last Revised 05/26/2026                        */
+/*                                                                 */
+/* This procedure  will  capture  processing  information  for the */
+/* current job and store this information in standard VSE symbolic */
+/* parameters, as follows:                                         */
+/*                                                                 */
+/* // SETPARM JNM=''                                               */
+/* // SETPARM JNO=''                                               */
+/* // SETPARM JCL=''                                               */
+/* // SETPARM PID=''                                               */
+/* // SETPARM CPU=''                                               */
+/* // SETPARM VMN=''                                               */
+/* // EXEC REXX=JOBINFO,JNM,JNO,JCL,PID,CPU,VMN                    */
+/*                                                                 */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* No warranty is expressed or implied.    Written by Dave L Clark */
+/* Neither the author nor the company is   Winsupply Group Srvcs   */
+/* responsible for any loss or damage      3110 Kettering Blvd.    */
+/* resulting from the use of this code.    Dayton, OH  45439       */
+/* Source is provided on an as-is basis.   Phone (937)294-5331     */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+  SYSPOWJNM  = '';
+  SYSPOWJNUM = '';
+  SYSPOWJCLS = '';
+  SYSPID     = '';
+  SYSCPUID   = '';
+
+  fc = SYSVAR('SYSPOWJNM');
+  fc = SYSVAR('SYSPOWJNUM');
+Signal On Syntax Name IgnoreError;
+  fc = SYSVAR('SYSPOWJCLS'); /* requires ptf */
+IgnoreError:
+Signal Off Syntax;
+  fc = SYSVAR('SYSPID');
+  fc = SYSVAR('SYSCPUID');
+
+  jnm = Strip(SYSPOWJNM);
+  jno = Strip(SYSPOWJNUM);
+  jcl = Strip(SYSPOWJCLS);
+  pid = Strip(SYSPID);
+  Parse Value Strip(SYSCPUID) With . 3 cpu . 9 mdl . 13 .;
+  cpu = 'C'cpu'.M'mdl;
+  vmn = STORAGE(05CC, 8);
+
+  Call RXVSESYM 'Set','JNM','JNO','JCL','PID','CPU','VMN';
+  If rc <> 0 Then Do
+    Say ' RXVSESYM Set error: rc = 'rc', result = 'result;
+    Exit 4;
+  End
+
+Exit 0;
